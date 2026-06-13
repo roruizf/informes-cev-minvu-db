@@ -1,15 +1,12 @@
 """SQLModel schema for informes-cev-minvu-db.
 
-Adapted from the datacev-chile legacy model, with two deliberate changes:
-  1. Extracted values are stored as their NORMALIZED types (float/int/date),
-     not raw strings — normalization happens in the transform layer before persist.
-  2. `informe_v2_pagina6` keeps the 2-profile shape (temp_exterior/temp_interior);
-     the visible "confort" line has no tabular row (Phase-0 finding).
+Conventions (Roberto, 2026-06-13): names end `_nombre`; no abbreviations
+(calefaccion/enfriamiento/proyectado/referencia/energia_primaria/porcentaje/
+temperatura); string dimensions normalized to FK reference tables. Controlled
+redundancy is intentional: page tables keep codigo_evaluacion/region_nombre/
+comuna_nombre/direccion/tipo_vivienda_id so each is self-contained for API/agents.
 
-Tables fall in three groups:
-  - Reference (dimensional): regiones, comunas, tipos_evaluacion
-  - Discovery / scraping mechanics (NOT mirrored): busquedas, paginas_html
-  - Directory + extracted data (mirrored): evaluaciones, informe_v2_pagina1..7
+Pages 1-5,7 extracted by coordinates; page 6 (temps) by template-matching OCR.
 """
 from datetime import date, datetime
 from typing import List, Optional
@@ -21,14 +18,14 @@ from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
 
 class Regiones(SQLModel, table=True):
     region_id: int = Field(primary_key=True)
-    region_name: str = Field(unique=True)
+    region_nombre: str = Field(unique=True)
 
     comunas: List["Comunas"] = Relationship(back_populates="region")
 
 
 class Comunas(SQLModel, table=True):
     comuna_id: int = Field(primary_key=True)
-    comuna_name: str
+    comuna_nombre: str
     region_id: int = Field(foreign_key="regiones.region_id", index=True)
 
     region: Regiones = Relationship(back_populates="comunas")
@@ -41,12 +38,34 @@ class TiposEvaluacion(SQLModel, table=True):
     tipo_evaluacion_nombre: str = Field(unique=True, index=True)
 
 
-# ── Discovery / scraping mechanics (NOT mirrored to NoCodeBackend) ──────────
+class Meses(SQLModel, table=True):
+    mes_id: int = Field(primary_key=True)
+    mes_nombre: str = Field(unique=True)
+
+
+class Orientaciones(SQLModel, table=True):
+    orientacion_id: int = Field(primary_key=True)
+    orientacion_nombre: str = Field(unique=True)
+
+
+class TiposVivienda(SQLModel, table=True):
+    __tablename__ = "tipos_vivienda"
+    tipo_vivienda_id: Optional[int] = Field(default=None, primary_key=True)
+    tipo_vivienda_nombre: str = Field(unique=True, index=True)
+
+
+class ZonasTermicas(SQLModel, table=True):
+    __tablename__ = "zonas_termicas"
+    zona_termica_id: int = Field(primary_key=True)
+    zona_termica_nombre: str = Field(unique=True)
+
+
+# ── Discovery / scraping mechanics (NOT mirrored) ───────────────────────────
 
 
 class Busquedas(SQLModel, table=True):
     search_id: str = Field(primary_key=True)
-    search_date: str = Field(index=True)
+    search_date: date = Field(index=True)
 
 
 class PaginasHTML(SQLModel, table=True):
@@ -64,7 +83,7 @@ class PaginasHTML(SQLModel, table=True):
 
 
 class Evaluaciones(SQLModel, table=True):
-    """The report directory: the universe of available reports + processing state.
+    """Report directory: universe of available reports + processing state.
 
     eval_id = uuid5(NAMESPACE_DNS, f"{comuna_id}_{region_id}_{tipo_evaluacion_id}_{identificacion}")
     """
@@ -73,17 +92,15 @@ class Evaluaciones(SQLModel, table=True):
     comuna_id: int = Field(foreign_key="comunas.comuna_id", index=True)
     tipo_evaluacion_id: int = Field(foreign_key="tipos_evaluacion.tipo_evaluacion_id")
 
-    # summary fields parsed from the portal HTML listing
     identificacion_vivienda: str
     tipologia: Optional[str] = None
     proyecto: Optional[str] = None
-    calificacion_energetica_letra: Optional[str] = None  # CE
-    calificacion_equipos_letra: Optional[str] = None      # CEE
+    calificacion_energetica_letra: Optional[str] = None
+    calificacion_equipos_letra: Optional[str] = None
     codigo_informe: Optional[str] = None
     codigo_etiqueta: Optional[str] = None
     viewstate: Optional[str] = None
 
-    # pipeline control
     pdf_download_status: str = Field(default="pending", index=True)
     report_version: Optional[int] = None
     retry_count: int = Field(default=0)
@@ -102,21 +119,21 @@ class Evaluaciones(SQLModel, table=True):
     pagina7: Optional["InformeV2Pagina7"] = Relationship(back_populates="evaluacion")
 
 
-# ── Extracted-data tables (normalized types) ────────────────────────────────
+# ── Extracted-data tables (normalized types; controlled redundancy kept) ────
 
 
 class InformeV2Pagina1(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina1"
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", primary_key=True)
     codigo_evaluacion: Optional[str] = None
-    tipo_evaluacion: Optional[str] = None
-    region: Optional[str] = None
-    comuna: Optional[str] = None
+    tipo_evaluacion_nombre: Optional[str] = None
+    region_nombre: Optional[str] = None
+    comuna_nombre: Optional[str] = None
     direccion: Optional[str] = None
     rol_vivienda_proyecto: Optional[str] = None
-    tipo_vivienda: Optional[str] = None
+    tipo_vivienda_id: Optional[int] = Field(default=None, foreign_key="tipos_vivienda.tipo_vivienda_id")
     superficie_interior_util_m2: Optional[float] = None
-    porcentaje_ahorro: Optional[int] = None
+    porcentaje_ahorro: Optional[float] = None
     letra_eficiencia_energetica_dem: Optional[str] = None
     demanda_calefaccion_kwh_m2_ano: Optional[float] = None
     demanda_enfriamiento_kwh_m2_ano: Optional[float] = None
@@ -130,12 +147,12 @@ class InformeV2Pagina2(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina2"
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", primary_key=True)
     codigo_evaluacion: Optional[str] = None
-    region: Optional[str] = None
-    comuna: Optional[str] = None
+    region_nombre: Optional[str] = None
+    comuna_nombre: Optional[str] = None
     direccion: Optional[str] = None
     rol_vivienda: Optional[str] = None
-    tipo_vivienda: Optional[str] = None
-    zona_termica: Optional[str] = None
+    tipo_vivienda_id: Optional[int] = Field(default=None, foreign_key="tipos_vivienda.tipo_vivienda_id")
+    zona_termica_id: Optional[int] = Field(default=None, foreign_key="zonas_termicas.zona_termica_id")
     superficie_interior_util_m2: Optional[float] = None
     solicitado_por: Optional[str] = None
     evaluado_por: Optional[str] = None
@@ -174,55 +191,55 @@ class InformeV2Pagina3Consumos(SQLModel, table=True):
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", primary_key=True)
     codigo_evaluacion: Optional[str] = None
     agua_caliente_sanitaria_kwh_m2: Optional[float] = None
-    agua_caliente_sanitaria_per: Optional[float] = None
+    agua_caliente_sanitaria_porcentaje: Optional[float] = None
     iluminacion_kwh_m2: Optional[float] = None
-    iluminacion_per: Optional[float] = None
+    iluminacion_porcentaje: Optional[float] = None
     calefaccion_kwh_m2: Optional[float] = None
-    calefaccion_kwh_per: Optional[float] = None
+    calefaccion_porcentaje: Optional[float] = None
     energia_renovable_no_convencional_kwh_m2: Optional[float] = None
-    energia_renovable_no_convencional_per: Optional[float] = None
+    energia_renovable_no_convencional_porcentaje: Optional[float] = None
     consumo_total_kwh_m2: Optional[float] = None
     emisiones_kgco2_m2_ano: Optional[float] = None
-    calefaccion_descripcion_proy: Optional[str] = None
-    calefaccion_consumo_proy_kwh: Optional[float] = None
-    calefaccion_consumo_proy_per: Optional[float] = None
-    iluminacion_descripcion_proy: Optional[str] = None
-    iluminacion_consumo_proy_kwh: Optional[float] = None
-    iluminacion_consumo_proy_per: Optional[float] = None
-    agua_caliente_sanitaria_descripcion_proy: Optional[str] = None
-    agua_caliente_sanitaria_consumo_proy_kwh: Optional[float] = None
-    agua_caliente_sanitaria_consumo_proy_per: Optional[float] = None
-    energia_renovable_no_convencional_descripcion_proy: Optional[str] = None
-    energia_renovable_no_convencional_consumo_proy_kwh: Optional[float] = None
-    energia_renovable_no_convencional_consumo_proy_per: Optional[float] = None
-    consumo_total_requerido_proy_kwh: Optional[float] = None
-    calefaccion_descripcion_ref: Optional[str] = None
-    calefaccion_consumo_ref_kwh: Optional[float] = None
-    calefaccion_consumo_ref_per: Optional[float] = None
-    iluminacion_descripcion_ref: Optional[str] = None
-    iluminacion_consumo_ref_kwh: Optional[float] = None
-    iluminacion_consumo_ref_per: Optional[float] = None
-    agua_caliente_sanitaria_descripcion_ref: Optional[str] = None
-    agua_caliente_sanitaria_consumo_ref_kwh: Optional[float] = None
-    agua_caliente_sanitaria_consumo_ref_per: Optional[float] = None
-    energia_renovable_no_convencional_descripcion_ref: Optional[str] = None
-    energia_renovable_no_convencional_consumo_ref_kwh: Optional[float] = None
-    energia_renovable_no_convencional_consumo_ref_per: Optional[float] = None
-    consumo_total_requerido_ref_kwh: Optional[float] = None
-    consumo_ep_calefaccion_kwh: Optional[float] = None
-    consumo_ep_agua_caliente_sanitaria_kwh: Optional[float] = None
-    consumo_ep_iluminacion_kwh: Optional[float] = None
-    consumo_ep_ventiladores_kwh: Optional[float] = None
-    generacion_ep_fotovoltaicos_kwh: Optional[float] = None
+    calefaccion_descripcion_proyectado: Optional[str] = None
+    calefaccion_consumo_proyectado_kwh: Optional[float] = None
+    calefaccion_consumo_proyectado_porcentaje: Optional[float] = None
+    iluminacion_descripcion_proyectado: Optional[str] = None
+    iluminacion_consumo_proyectado_kwh: Optional[float] = None
+    iluminacion_consumo_proyectado_porcentaje: Optional[float] = None
+    agua_caliente_sanitaria_descripcion_proyectado: Optional[str] = None
+    agua_caliente_sanitaria_consumo_proyectado_kwh: Optional[float] = None
+    agua_caliente_sanitaria_consumo_proyectado_porcentaje: Optional[float] = None
+    energia_renovable_no_convencional_descripcion_proyectado: Optional[str] = None
+    energia_renovable_no_convencional_consumo_proyectado_kwh: Optional[float] = None
+    energia_renovable_no_convencional_consumo_proyectado_porcentaje: Optional[float] = None
+    consumo_total_requerido_proyectado_kwh: Optional[float] = None
+    calefaccion_descripcion_referencia: Optional[str] = None
+    calefaccion_consumo_referencia_kwh: Optional[float] = None
+    calefaccion_consumo_referencia_porcentaje: Optional[float] = None
+    iluminacion_descripcion_referencia: Optional[str] = None
+    iluminacion_consumo_referencia_kwh: Optional[float] = None
+    iluminacion_consumo_referencia_porcentaje: Optional[float] = None
+    agua_caliente_sanitaria_descripcion_referencia: Optional[str] = None
+    agua_caliente_sanitaria_consumo_referencia_kwh: Optional[float] = None
+    agua_caliente_sanitaria_consumo_referencia_porcentaje: Optional[float] = None
+    energia_renovable_no_convencional_descripcion_referencia: Optional[str] = None
+    energia_renovable_no_convencional_consumo_referencia_kwh: Optional[float] = None
+    energia_renovable_no_convencional_consumo_referencia_porcentaje: Optional[float] = None
+    consumo_total_requerido_referencia_kwh: Optional[float] = None
+    consumo_energia_primaria_calefaccion_kwh: Optional[float] = None
+    consumo_energia_primaria_agua_caliente_sanitaria_kwh: Optional[float] = None
+    consumo_energia_primaria_iluminacion_kwh: Optional[float] = None
+    consumo_energia_primaria_ventiladores_kwh: Optional[float] = None
+    generacion_energia_primaria_fotovoltaicos_kwh: Optional[float] = None
     aporte_fotovoltaicos_consumos_basicos_kwh: Optional[float] = None
     diferencia_fotovoltaica_para_consumo_kwh: Optional[float] = None
     aporte_solar_termica_calefaccion_kwh: Optional[float] = None
     aporte_solar_termica_agua_caliente_sanitaria_kwh: Optional[float] = None
-    total_consumo_ep_antes_fotovoltaica_kwh: Optional[float] = None
+    total_consumo_energia_primaria_antes_fotovoltaica_kwh: Optional[float] = None
     aporte_fotovoltaicos_consumos_basicos_kwh_bis: Optional[float] = None
     consumos_basicos_a_suplir_kwh: Optional[float] = None
-    consumo_total_ep_obj_kwh: Optional[float] = None
-    consumo_total_ep_ref_kwh: Optional[float] = None
+    consumo_total_energia_primaria_objeto_kwh: Optional[float] = None
+    consumo_total_energia_primaria_referencia_kwh: Optional[float] = None
     coeficiente_energetico_c: Optional[float] = None
 
     evaluacion: Evaluaciones = Relationship(back_populates="pagina3_consumos")
@@ -233,7 +250,7 @@ class InformeV2Pagina3Envolvente(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
     codigo_evaluacion: Optional[str] = None
-    orientacion: Optional[str] = None
+    orientacion_id: Optional[int] = Field(default=None, foreign_key="orientaciones.orientacion_id")
     elementos_opacos_area_m2: Optional[float] = None
     elementos_opacos_u_w_m2_k: Optional[float] = None
     elementos_traslucidos_area_m2: Optional[float] = None
@@ -243,10 +260,10 @@ class InformeV2Pagina3Envolvente(SQLModel, table=True):
     p03_w_k: Optional[float] = None
     p04_w_k: Optional[float] = None
     p05_w_k: Optional[float] = None
-    ua_phil: Optional[float] = None
+    ua_mas_phi_l: Optional[float] = None
 
     evaluacion: Evaluaciones = Relationship(back_populates="pagina3_envolvente")
-    __table_args__ = (UniqueConstraint("eval_id", "orientacion", name="uq_eval_orient_p3e"),)
+    __table_args__ = (UniqueConstraint("eval_id", "orientacion_id", name="uq_eval_orient_p3e"),)
 
 
 class InformeV2Pagina4(SQLModel, table=True):
@@ -254,11 +271,11 @@ class InformeV2Pagina4(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
     codigo_evaluacion: Optional[str] = None
-    mes_id: Optional[int] = None
-    demanda_calef_viv_eval_kwh: Optional[float] = None
-    demanda_calef_viv_ref_kwh: Optional[float] = None
-    demanda_enfri_viv_eval_kwh: Optional[float] = None
-    demanda_enfri_viv_ref_kwh: Optional[float] = None
+    mes_id: Optional[int] = Field(default=None, foreign_key="meses.mes_id")
+    demanda_calefaccion_viv_eval_kwh: Optional[float] = None
+    demanda_calefaccion_viv_ref_kwh: Optional[float] = None
+    demanda_enfriamiento_viv_eval_kwh: Optional[float] = None
+    demanda_enfriamiento_viv_ref_kwh: Optional[float] = None
     sobrecalentamiento_viv_eval_hr: Optional[float] = None
     sobrecalentamiento_viv_ref_hr: Optional[float] = None
     sobreenfriamiento_viv_eval_hr: Optional[float] = None
@@ -273,7 +290,7 @@ class InformeV2Pagina5(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
     codigo_evaluacion: Optional[str] = None
-    mes: Optional[str] = None
+    mes_id: Optional[int] = Field(default=None, foreign_key="meses.mes_id")
     q_recuperado_kwh: Optional[float] = None
     q_puentes_termicos_kwh: Optional[float] = None
     q_contra_terreno_kwh: Optional[float] = None
@@ -286,7 +303,7 @@ class InformeV2Pagina5(SQLModel, table=True):
     q_sol_kwh: Optional[float] = None
 
     evaluacion: Evaluaciones = Relationship(back_populates="pagina5")
-    __table_args__ = (UniqueConstraint("eval_id", "mes", name="uq_eval_mes_p5"),)
+    __table_args__ = (UniqueConstraint("eval_id", "mes_id", name="uq_eval_mes_p5"),)
 
 
 class InformeV2Pagina6(SQLModel, table=True):
@@ -294,14 +311,14 @@ class InformeV2Pagina6(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
     codigo_evaluacion: Optional[str] = None
-    mes: Optional[str] = None
+    mes_id: Optional[int] = Field(default=None, foreign_key="meses.mes_id")
     hora: Optional[int] = None
-    temp_exterior: Optional[float] = None
-    temp_interior: Optional[float] = None
+    temperatura_exterior: Optional[float] = None
+    temperatura_interior: Optional[float] = None
     ocr_low_confidence: bool = Field(default=False)
 
     evaluacion: Evaluaciones = Relationship(back_populates="pagina6")
-    __table_args__ = (UniqueConstraint("eval_id", "mes", "hora", name="uq_eval_mes_hora_p6"),)
+    __table_args__ = (UniqueConstraint("eval_id", "mes_id", "hora", name="uq_eval_mes_hora_p6"),)
 
 
 class InformeV2Pagina7(SQLModel, table=True):

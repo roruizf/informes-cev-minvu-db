@@ -79,7 +79,15 @@ def process_pdf(eval_id: str, pdf_path: str | Path, *, delete_after: bool = Fals
 
 def _ensure_eval(session: Session, eval_id: str, comuna_id: int = 12,
                  tipo: int = 2, ident: str = "TEST") -> None:
-    """Insert a minimal eval row if missing (used for local pipeline tests)."""
+    """Insert a minimal eval row if missing (used for local pipeline tests).
+
+    Also ensures the referenced comuna exists (FK), creating a stub if needed.
+    """
+    from informes_cev_minvu_db.db.models import Comunas
+    if session.get(Comunas, comuna_id) is None:
+        # attach to region 15 (Arica) as a test stub
+        session.add(Comunas(comuna_id=comuna_id, comuna_nombre=f"TEST-{comuna_id}", region_id=15))
+        session.flush()
     if session.get(Evaluaciones, eval_id) is None:
         session.add(Evaluaciones(eval_id=eval_id, comuna_id=comuna_id,
                                  tipo_evaluacion_id=tipo, identificacion_vivienda=ident,
