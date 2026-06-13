@@ -25,10 +25,10 @@ def sync_comunas(client: PortalClient, region_id: int) -> int:
         for cid, name in comunas:
             existing = s.get(Comunas, cid)
             if existing is None:
-                s.add(Comunas(comuna_id=cid, comuna_name=name, region_id=region_id))
-            elif existing.region_id != region_id or existing.comuna_name != name:
+                s.add(Comunas(comuna_id=cid, comuna_nombre=name, region_id=region_id))
+            elif existing.region_id != region_id or existing.comuna_nombre != name:
                 existing.region_id = region_id
-                existing.comuna_name = name
+                existing.comuna_nombre = name
                 s.add(existing)
         s.commit()
     return len(comunas)
