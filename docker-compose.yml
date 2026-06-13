@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cev
+      POSTGRES_PASSWORD: cev
+      POSTGRES_DB: cev
+    ports:
+      - "5432:5432"
+    volumes:
+      - cev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://cev:cev@db:5432/cev
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    # entrypoint runs `cev init` (tables + seed) then uvicorn (see Dockerfile)
+
+volumes:
+  cev_pgdata:

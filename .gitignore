@@ -3,3 +3,9 @@ phase0/sample_pdfs/
 phase0/outputs/*.pdf
 __pycache__/
 *.pyc
+phase1/work_pdfs/
+phase1/outputs/*.png
+phase1/evidence/*.png
+
+docker-compose.override.yml
+.env
