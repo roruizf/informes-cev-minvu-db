@@ -192,15 +192,18 @@ def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, 
         return coordinates
 
     elif page_num == 4:
-        coordinates = {
-            'codigo_evaluacion': (62.3, 30.7, 88.1, 36.0),
-            # Coordenadas para columna completa de Enero (ajustar según PDF real)
-            # x1, y1, x2, y2 - columna completa
-            'columna_enero': (46.5, 189.7, 62.0, 243.2),
-            # Coordenadas para columna completa de Julio (ajustar según PDF real)
-            # x1, y1, x2, y2 - columna completa
-            'columna_julio': (76.5, 189.7, 92.0, 243.2)
-        }
+        # Página 5 (índice 4) - Flujos energéticos Q (Enero/Julio).
+        # 20 zonas individuales (10 parámetros x 2 meses), una por celda del valor
+        # mostrado (la fila superior de cada celda; debajo hay un valor crudo menor).
+        # Reemplaza el antiguo enfoque de columna-completa + swap. Medido sobre PDF real.
+        coordinates = {'codigo_evaluacion': (62.3, 30.7, 88.1, 36.0)}
+        params = ['q_recuperado', 'q_puentes_termicos', 'q_contra_terreno', 'q_piso_ventilado',
+                  'q_ventanas', 'q_muros', 'q_techo', 'q_infiltraciones', 'q_ventilacion', 'q_sol']
+        y_centers = [189.3, 194.9, 200.3, 205.7, 211.0, 216.6, 222.0, 227.3, 232.6, 237.9]
+        for p, yc in zip(params, y_centers):
+            y1, y2 = round(yc - 1.6, 1), round(yc + 1.2, 1)
+            coordinates[f'{p}_enero_kwh'] = (47.0, y1, 60.0, y2)
+            coordinates[f'{p}_julio_kwh'] = (78.0, y1, 91.0, y2)
         return coordinates
 
     # Página 6 (índice 5)

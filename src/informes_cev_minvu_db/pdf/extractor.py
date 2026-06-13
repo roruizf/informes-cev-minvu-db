@@ -445,8 +445,14 @@ def get_informe_cev_v2_pagina3_consumos_as_dict(pdf_report: fitz.Document) -> Di
 
 def get_informe_cev_v2_pagina3_envolvente_as_dict(pdf_report: fitz.Document) -> Dict[str, Any]:
     """
-    Extracts envelope data from page 3 into a dictionary (structured for DataFrame).
-    Uses safe float conversion and get_page_coordinates for consistency.
+    Extracts envelope data from page 3 into a dictionary (10 orientation rows).
+
+    Coordinate-block based (opacos area/U, traslucidos area/U, puentes P01-P05,
+    UA+phiL). VERIFIED correct against the rendered table for all blocks (Fase 7,
+    PDF Ancud). Intentionally NOT refactored: the multi-block row alignment
+    (incl. the UA+phiL index handling) is delicate and currently exact; a rewrite
+    would add risk without correctness gain. Page 5 (simpler) was refactored to a
+    font-size approach; page 3 stays coordinate-based.
     """
     data_list: Dict[str, List[Any]] = {}
     try:
@@ -637,9 +643,9 @@ def get_informe_cev_v2_pagina4_as_dict(pdf_report: fitz.Document) -> Dict[str, A
 
 def get_informe_cev_v2_pagina5_as_dict(pdf_report: fitz.Document) -> Dict[str, Any]:
     """
-    Extract data from page 5 of an informe_CEV_v2 PDF report and return it as a dictionary.
-    Page 5 contains a transposed table with data for January and July across 10 energy parameters.
-    Uses column-based extraction with specific logic for 19-value pattern.
+    Extract page 5 (energy flows Q) using 20 INDIVIDUAL coordinate boxes
+    (10 parameters x Enero/Julio). Robust to line-spacing changes; no swap hack.
+    Returns the same {col: [enero, julio]} structure for two rows.
     """
     data_list: Dict[str, List[Any]] = {}
     try:
@@ -649,106 +655,49 @@ def get_informe_cev_v2_pagina5_as_dict(pdf_report: fitz.Document) -> Dict[str, A
             raise ValueError("PDF has less than 5 pages.")
 
         page = pdf_report[4]
-
-        # Usar get_page_coordinates para obtener las coordenadas
         COORDINATES = get_page_coordinates(4)
-
         if not COORDINATES:
             logging.warning("No coordinates defined for page 5")
             return {}
 
-        # Extraer texto de columnas completas
-        codigo_evaluacion = extract_text_from_area(
-            page, COORDINATES['codigo_evaluacion']).strip()
-        columna_enero_text = extract_text_from_area(
-            page, COORDINATES['columna_enero'])
-        columna_julio_text = extract_text_from_area(
-            page, COORDINATES['columna_julio'])
+        codigo_evaluacion = extract_text_from_area(page, COORDINATES['codigo_evaluacion']).strip()
 
-        # Función para procesar una línea y convertir a float
-        def convert_line_to_float(line: str) -> Optional[float]:
-            """Convierte una línea de texto a float, manejando casos especiales."""
-            if not line or line.strip() == '':
-                return None
+        # The table has, per cell, a DISPLAYED value (font size ~12) and a smaller
+        # RAW value (~5.8) beneath it. We extract only the displayed (size-12) numeric
+        # spans in the table region — robust to row-pitch changes (no fixed boxes,
+        # no swap hack). Split into Enero (left, x<70mm) / Julio (right) by x, order by y.
+        REPORT_W, REPORT_H = 215.9, 330.0
+        pr = page.rect
+        x_split_mm, y_lo, y_hi = 70.0, 187.0, 246.0
+        num_re = re.compile(r'^-?\d+(?:,\d+)?$|^-$')
 
-            cleaned_line = line.strip().replace(',', '.')
+        enero, julio = [], []
+        for blk in page.get_text("dict").get("blocks", []):
+            for line in blk.get("lines", []):
+                for span in line.get("spans", []):
+                    txt = span["text"].strip()
+                    if not num_re.match(txt) or span["size"] < 9.0:  # displayed only
+                        continue
+                    mx = span["bbox"][0] / pr.width * REPORT_W
+                    my = span["bbox"][1] / pr.height * REPORT_H
+                    if not (y_lo < my < y_hi and 44 < mx < 95):
+                        continue
+                    val = 0.0 if txt == '-' else safe_float_convert(txt)
+                    (enero if mx < x_split_mm else julio).append((my, val))
 
-            # Casos especiales
-            if cleaned_line in ['-', '-0']:
-                return 0.0
+        enero = [v for _, v in sorted(enero)]
+        julio = [v for _, v in sorted(julio)]
+        # pad/truncate to 10
+        enero = (enero + [None] * 10)[:10]
+        julio = (julio + [None] * 10)[:10]
 
-            try:
-                return float(cleaned_line)
-            except ValueError:
-                return None
+        params = ['q_recuperado', 'q_puentes_termicos', 'q_contra_terreno', 'q_piso_ventilado',
+                  'q_ventanas', 'q_muros', 'q_techo', 'q_infiltraciones', 'q_ventilacion', 'q_sol']
 
-        # Función para procesar una columna completa según el patrón identificado
-        def process_column_data(column_text: str, is_enero: bool = False) -> List[Optional[float]]:
-            """
-            Procesa el texto de una columna completa según el patrón de 19 valores.
-
-            Para Julio: tomar los últimos 10 valores
-            Para Enero: tomar los últimos 10 valores, luego intercambiar penúltimo con antepenúltimo
-            """
-            if not column_text or column_text.strip() == '':
-                return [None] * 10
-
-            # Dividir por líneas y limpiar
-            lines = [line.strip()
-                     for line in column_text.splitlines() if line.strip()]
-
-            # Convertir todas las líneas a float
-            all_values = []
-            for line in lines:
-                value = convert_line_to_float(line)
-                all_values.append(value)
-
-            # Verificar que tenemos 19 valores (o al menos 10)
-            if len(all_values) < 10:
-                logging.warning(
-                    f"Expected at least 10 values, got {len(all_values)}")
-                # Rellenar con None si faltan valores
-                while len(all_values) < 10:
-                    all_values.append(None)
-
-            # Tomar los últimos 10 valores
-            last_10_values = all_values[-10:] if len(all_values) >= 10 else all_values + [
-                None] * (10 - len(all_values))
-
-            # Para enero: intercambiar penúltimo (índice -2) con antepenúltimo (índice -3)
-            if is_enero and len(last_10_values) >= 3:
-                # Intercambiar posiciones: penúltimo ↔ antepenúltimo
-                last_10_values[-2], last_10_values[-3] = last_10_values[-3], last_10_values[-2]
-
-            return last_10_values
-
-        # Procesar columnas
-        valores_enero = process_column_data(columna_enero_text, is_enero=True)
-        valores_julio = process_column_data(columna_julio_text, is_enero=False)
-
-        # Lista de parámetros energéticos en el orden esperado
-        field_names = [
-            'q_recuperado_kwh',
-            'q_puentes_termicos_kwh',
-            'q_contra_terreno_kwh',
-            'q_piso_ventilado_kwh',
-            'q_ventanas_kwh',
-            'q_muros_kwh',
-            'q_techo_kwh',
-            'q_infiltraciones_kwh',
-            'q_ventilacion_kwh',
-            'q_sol_kwh'
-        ]
-
-        # Preparar estructura de datos para DataFrame (2 filas: Enero y Julio)
         data_list['codigo_evaluacion'] = [codigo_evaluacion, codigo_evaluacion]
         data_list['mes'] = ['Enero', 'Julio']
-
-        # Asignar valores a cada parámetro energético
-        for i, field_name in enumerate(field_names):
-            enero_val = valores_enero[i] if i < len(valores_enero) else None
-            julio_val = valores_julio[i] if i < len(valores_julio) else None
-            data_list[field_name] = [enero_val, julio_val]
+        for i, p in enumerate(params):
+            data_list[f'{p}_kwh'] = [enero[i], julio[i]]
 
         return data_list
 
