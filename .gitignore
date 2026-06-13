@@ -1,0 +1,5 @@
+venv/
+phase0/sample_pdfs/
+phase0/outputs/*.pdf
+__pycache__/
+*.pyc
