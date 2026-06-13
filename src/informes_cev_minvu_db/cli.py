@@ -16,6 +16,10 @@ def main() -> None:
     d.add_argument("--comuna", type=int, default=None, help="single comuna id (optional)")
     d.add_argument("--tipo", type=int, choices=[1, 2], default=None, help="1, 2, or both")
     d.add_argument("--max-pages", type=int, default=None, help="cap result pages (testing)")
+    pp = sub.add_parser("process-pdf", help="process one local PDF end-to-end")
+    pp.add_argument("--eval-id", required=True)
+    pp.add_argument("--path", required=True)
+    pp.add_argument("--ensure-eval", action="store_true", help="insert a stub eval row if missing")
     args = p.parse_args()
 
     if args.cmd in ("init-db", "init"):
@@ -30,6 +34,15 @@ def main() -> None:
         tipos = (args.tipo,) if args.tipo else (1, 2)
         res = discover(args.region, comuna_id=args.comuna, tipos=tipos, max_pages=args.max_pages)
         print("discovery summary:", res)
+    if args.cmd == "process-pdf":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from informes_cev_minvu_db.pipeline.process import process_pdf, _ensure_eval
+        if args.ensure_eval:
+            from informes_cev_minvu_db.db.session import get_session
+            with get_session() as s:
+                _ensure_eval(s, args.eval_id)
+        print("result:", process_pdf(args.eval_id, args.path))
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/informes_cev_minvu_db"]
+artifacts = ["*.pkl"]
+force-include = { "src/informes_cev_minvu_db/pdf/digit_templates.pkl" = "informes_cev_minvu_db/pdf/digit_templates.pkl" }
 
 [tool.ruff]
 line-length = 110
