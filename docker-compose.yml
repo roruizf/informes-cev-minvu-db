@@ -24,9 +24,7 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
-    # init-db + seed on startup, then run the API
-    command: >
-      sh -c "cev init && uvicorn informes_cev_minvu_db.app:app --host 0.0.0.0 --port 8000"
+    # entrypoint runs `cev init` (tables + seed) then uvicorn (see Dockerfile)
 
 volumes:
   cev_pgdata:

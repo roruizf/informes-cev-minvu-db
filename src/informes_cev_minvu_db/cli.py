@@ -23,6 +23,8 @@ def main() -> None:
     sm = sub.add_parser("sync-mirror", help="push data to NoCodeBackend (incremental)")
     sm.add_argument("--limit", type=int, default=None)
     sm.add_argument("--full", action="store_true", help="re-sync all (ignore synced flag)")
+    sub.add_parser("cleanup", help="remove orphan local PDFs older than N days")
+    sub.add_parser("daily", help="run the daily incremental job once")
     args = p.parse_args()
 
     if args.cmd in ("init-db", "init"):
@@ -51,6 +53,14 @@ def main() -> None:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         from informes_cev_minvu_db.mirror.sync import run_sync
         print("sync result:", run_sync(limit=args.limit, full=args.full))
+    if args.cmd == "cleanup":
+        from informes_cev_minvu_db.pipeline.cleanup import cleanup_orphans
+        print("cleanup:", cleanup_orphans())
+    if args.cmd == "daily":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from informes_cev_minvu_db.pipeline.daily import run_daily
+        print("daily:", run_daily())
 
 
 if __name__ == "__main__":
