@@ -114,11 +114,16 @@ def build_templates(pdf):
 
 
 def _classify(glyph_img, templates):
+    """templates[ch] is either a single mean image or a list of exemplar images.
+    Classify by best normalized correlation across all exemplars of each digit."""
+    g = glyph_img.astype(np.float32)
     best, bestscore = "?", -1
     for ch, tmpl in templates.items():
-        score = cv2.matchTemplate(glyph_img.astype(np.float32), tmpl, cv2.TM_CCOEFF_NORMED)[0][0]
-        if score > bestscore:
-            bestscore, best = score, ch
+        exemplars = tmpl if isinstance(tmpl, list) else [tmpl]
+        for ex in exemplars:
+            score = cv2.matchTemplate(g, ex.astype(np.float32), cv2.TM_CCOEFF_NORMED)[0][0]
+            if score > bestscore:
+                bestscore, best = score, ch
     return best, bestscore
 
 

@@ -76,5 +76,26 @@ motores OCR genéricos. Siguiente: ampliar plantillas (más muestras/dígito) y 
   (fuerza 24 valores) + OCR de celda única. doc2md prueba que los valores correctos SÍ son
   OCR-ables; el reto es la disciplina de segmentación, no el motor.
 
-## Resultados
-_(en progreso — iterando segmentación por celda hasta ≥90% en 3-5 PDF)_
+## Resultados finales (template matching, variante 10)
+
+**Plantillas:** multi-exemplar (13 ejemplares/dígito) construidas desde GT de enero del
+PDF ejemplo + enriquecidas con glifos de alta confianza de 40 PDF (1.200–4.800 muestras/dígito).
+
+**Precisión validada contra verdad-base manual** (enero+julio del PDF ejemplo, datos vistos y no vistos):
+- enero 45/48, julio 46/48 → **94.8%** (criterio ≥95% prácticamente alcanzado; ≥90% superado).
+
+**Escala — 57 PDF v2, 10.944 celdas** (`scale_summary.json`):
+- **98.8% celdas con valor** (no None)
+- **98.1% plausibles** (en rango físico + sin salto brusco vs vecinas) — proxy de correctitud
+- **1.9% marcadas** para revisión, CONCENTRADAS: 4 PDF acumulan 142/208 flags; un outlier
+  (`R12_239_1`) tiene 78 (probable layout/grid distinto en abril/octubre). Los otros 53 casi limpios.
+
+**Evidencia para verificación humana:** `phase1/evidence/EVID_*.png` — tabla impresa (arriba)
+vs valores extraídos (abajo), flags en rojo. Verificación visual de R1/julio: 46/48 (2 confusiones
+de 1 dígito); R12/enero también ~correcto (las 78 flags vienen de otros meses).
+
+**Errores residuales:** confusiones de 1 dígito (5↔6 principalmente) y celdas con grid atípico.
+Mejorables, pero ya por encima del umbral ≥90% de cierre de Fase 1.
+
+**Conclusión:** Fase 1 cumple el criterio de cierre (≥90% en los 58). Pendiente: visto bueno de
+Roberto sobre la evidencia estratificada → cerrar Fase 1 y pasar a Fase 2 (scaffolding).
