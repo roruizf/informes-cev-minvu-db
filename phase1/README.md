@@ -47,7 +47,16 @@ Cada variante: parámetros Tesseract, DPI, preprocesamiento, y resultado en prec
 | 4 | 600 | resize×2 + Otsu + borde | `--psm 8` whitelist `0-9,.` | columnas por pitch + inset celda 16%/4% | enero ext **16/24**, int **12/24** | Gran salto: muchas celdas exactas. Inset fijo no robusto. |
 | 5 | 600 | componentes conexas + resize×3 | `--psm 8` whitelist | columnas + crop a blobs de dígito | ext 14/24, int 5/24 | crop funde dígitos vecinos; no mejora. |
 | 6 | 600 | + borrado de líneas de grid (morfología) | `--psm 8` | celda | **0/24** | borrado de líneas demasiado agresivo, come trazos de dígitos. REVERTIDO. |
-| 7 | EasyOCR (torch CPU) | resize×3 fila completa | allowlist `0-9.,-` | fila entera, bin por x-center | ext **11/24** int 3/24 | EasyOCR RECONOCE excelente (`11.9 10.9 10.4 10.0 11.0 12.6 14.6 16.6` exactos) pero agrupa celdas vecinas en una caja (`21.8122312251223`). Recognition buena, segmentación de fila mala. → dar UNA celda a la vez. |
+| 7 | EasyOCR (torch CPU) | resize×3 fila completa | allowlist `0-9.,-` | fila entera, bin por x-center | ext **11/24** int 3/24 | EasyOCR RECONOCE excelente pero agrupa celdas vecinas (`21.8122312251223`). |
+| 8 | EasyOCR | celda aislada resize×4 | allowlist | por celda | 4/24 | EasyOCR pierde contexto en celda diminuta aislada. |
+| 9 | EasyOCR | fila + separadores blancos en bordes de columna | allowlist | fila con gaps + bin x | ext 13/24 int 8/24 | grilla CONFIRMADA correcta (separadores caen en los gaps), pero EasyOCR aún puentea bordes y a veces recorta último dígito. |
+| (Tess psm7/8/13 sobre celda limpia) | 600 | crop+blur+Otsu | psm 7/8/13 whitelist | celda | ~12/24 | error sistemático: `1` fantasma a la izq (`111.6`←`11.9`) aun con celda perfectamente recortada. Límite del motor. |
+
+**CONCLUSIÓN tras 9 variantes (umbral de intentos razonables alcanzado):** ningún motor
+off-the-shelf (Tesseract ni EasyOCR; por-celda, por-fila o con separadores) supera ~65%.
+El reconocimiento individual es bueno; el fallo residual (~35%) viene de fusión de celdas
+(EasyOCR) o dígito fantasma (Tesseract) que resisten el tuning. La grilla de columnas SÍ
+está bien detectada. Decisión de enfoque pendiente con Roberto.
 
 ---
 

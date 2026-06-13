@@ -76,6 +76,49 @@ def extract_band_easyocr(page, month):
     return out
 
 
+def extract_band_easyocr_split(page, month):
+    """Variant 9: paint white separators at column borders, then EasyOCR the
+    whole row. Keeps EasyOCR's row-context recognition but prevents merging
+    adjacent cells. Bin detections to columns by x-center."""
+    img = _render(page, BAND_REGIONS[month])
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    col_bounds, pitch = _column_bounds(gray)
+    out = {"pitch": round(pitch, 1)}
+    if len(col_bounds) < 25:
+        out["exterior"] = [None] * 24; out["interior"] = [None] * 24
+        out["bad_grid"] = True
+        return out
+    centers = [(col_bounds[c] + col_bounds[c + 1]) / 2 for c in range(24)]
+    rows = _data_row_bands(gray, col_bounds)
+    rd = reader()
+    for (y0, y1), key in [(rows[0], "exterior"), (rows[1], "interior")]:
+        strip = img[max(0, y0 - 4):y1 + 4, col_bounds[0]:col_bounds[-1]].copy()
+        x_off = col_bounds[0]
+        # blank out a wide band around each interior column border to force a
+        # real gap EasyOCR cannot bridge. ~22% of pitch on each side of border.
+        sh = strip.shape[0]
+        halfbar = max(6, int(0.11 * pitch))
+        for b in col_bounds[1:-1]:
+            x = b - x_off
+            cv2.rectangle(strip, (x - halfbar, 0), (x + halfbar, sh), (255, 255, 255), -1)
+        strip2 = cv2.resize(strip, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        results = rd.readtext(strip2, allowlist="0123456789.,-", detail=1, paragraph=False)
+        slots = [None] * 24
+        slotconf = [-1.0] * 24
+        for bbox, text, conf in results:
+            xs = [p[0] for p in bbox]
+            xc = (min(xs) + max(xs)) / 2 / 3.0 + x_off
+            val = _parse_num(text)
+            if val is None:
+                continue
+            ci = min(range(24), key=lambda i: abs(centers[i] - xc))
+            if conf > slotconf[ci]:
+                slots[ci] = val; slotconf[ci] = conf
+        out[key] = slots
+        out["conf_" + ("ext" if key == "exterior" else "int")] = slotconf
+    return out
+
+
 def extract_band_easyocr_percell(page, month):
     """Variant 8: EasyOCR on each cell individually (best recognition + forced split)."""
     img = _render(page, BAND_REGIONS[month])
@@ -117,7 +160,9 @@ if __name__ == "__main__":
     GT_int = [23.0, 22.3, 21.5, 20.9, 20.2, 19.8, 19.4, 19.6, 20.1, 21.0, 21.9, 23.1,
               24.1, 25.0, 25.8, 26.4, 26.5, 27.0, 26.9, 26.5, 26.0, 25.3, 24.5, 23.8]
     d = fitz.open(pdf); page = d[5]
-    r = extract_band_easyocr_percell(page, "enero") if mode == "percell" else extract_band_easyocr(page, "enero")
+    fn = {"percell": extract_band_easyocr_percell, "split": extract_band_easyocr_split,
+          "row": extract_band_easyocr}.get(mode, extract_band_easyocr_split)
+    r = fn(page, "enero")
 
     def acc(got, gt):
         return sum(1 for g, t in zip(got, gt) if g is not None and abs(g - t) < 0.05), len(gt)
