@@ -1,6 +1,16 @@
 # Fase 0 — Reporte de Factibilidad
 
-**Fecha:** 2026-06-13 · **Veredicto:** ✅ SEGUIR (con un cambio mayor de estrategia en página 6)
+**Fecha:** 2026-06-13 · **Veredicto:** ✅ SEGUIR · **Página 6 requiere OCR (plan original confirmado)**
+
+> **CORRECCIÓN (importante):** Una versión previa de este reporte concluyó erróneamente
+> que la página 6 no necesitaba OCR porque las temperaturas estaban en la capa de texto.
+> **Esa conclusión era un falso positivo.** Roberto exigió comparar la capa de texto contra
+> los valores realmente impresos. Resultado: en la MISMA posición (fila enero exterior),
+> la capa de texto dice `15,8 14,9 13,8 12,7...` mientras la TABLA IMPRESA (rasterizada)
+> dice `11,9 10,9 10,4 10,0...`. **Son números distintos.** La capa de texto es un decoy
+> (datos obsoletos/de otra capa); los valores correctos que ve un humano están en la imagen.
+> **OCR es necesario.** Evidencia visual: `phase0/outputs/PROOF_enero_table_vs_textlayer.png`.
+> Lección: validar estructura (24/24, en rango) NO basta; hay que validar CORRECTITUD contra lo impreso.
 
 Muestra: 11 PDFs (2 ejemplos canónicos + 9 regiones). Entorno: `venv` con PyMuPDF 1.27.2, OpenCV, pytesseract; Tesseract 4.1.1 en host. Scripts en `phase0/scripts/`, salidas en `phase0/outputs/`.
 
@@ -12,22 +22,31 @@ Muestra: 11 PDFs (2 ejemplos canónicos + 9 regiones). Entorno: `venv` con PyMuP
 |------|-----------|-----------|
 | **A — Coordenadas** | ✅ Válidas para v2 | 7/11 son v2 (7p) y extraen región/código limpio; PDFs con rectángulos en `outputs/*_rects.pdf` para tu revisión visual |
 | **B — Portal MINVU** | ✅ Vivo (cambió a HTTPS) | `https://...BusquedaVivienda.aspx` → 200; VIEWSTATE ok; VIEWSTATEGENERATOR=`2B422A52` (idéntico al legacy); 16 regiones |
-| **C — OCR pág. 6** | ✅ **OCR INNECESARIO** | Los datos están en la **capa de texto**; 192/192 valores extraídos por PDF, 0 OCR |
+| **C — OCR pág. 6** | ⚠️ **OCR NECESARIO** | La capa de texto es un DECOY (no coincide con la tabla impresa). Plan original de OCR confirmado. Ver corrección arriba. |
 | **D — gws en Docker** | ✅ Factible (auth ok) | gws lista Drive con refresh token válido; para Docker usar `KEYRING_BACKEND=file` + montar config |
 | **E — SQLite legacy + reconciliación** | ✅ | Esquema = SQLModel (14 tablas); reconciliación por `codigo_evaluacion` (consistente en págs 1/3/7) |
 
 ---
 
-## HALLAZGO CRÍTICO (Test C) — La página 6 NO requiere OCR
+## Test C — Página 6: OCR ES NECESARIO (capa de texto descartada)
 
-La premisa del PROMPT ("números diminutos en gráficos de Excel → OCR; 2 vs 3 perfiles cambian coordenadas") **es incorrecta**, verificado empíricamente:
+Hipótesis examinada: "los valores horarios están en la capa de texto → no hace falta OCR".
+**Falsada** con la prueba de correctitud que exigió Roberto:
 
-- La página 6 tiene, por mes, un **gráfico (imagen raster)** + una **TABLA de datos en CAPA DE TEXTO**.
-- La tabla siempre tiene **2 filas numéricas**: `T° exterior` y `T Interior`, cada una con 24 valores horarios (columnas 0..23).
-- El "3er perfil" visible (`Temperatura media de confort`) es **solo una línea del gráfico** — NO tiene fila tabular. Por eso "2 vs 3 perfiles" no cambia nada en los datos extraíbles.
-- `extract_page6.py` agrupa palabras numéricas por coordenada (y=fila, x=hora) y produce **24/24 exterior + 24/24 interior en los 4 meses**, todos en rango físico [-20,50]°C, en los 7 PDFs v2. **Tasa: 4/4 bandas válidas en 7/7 PDFs = 100%.**
+- La página 6 SÍ tiene una capa de texto con números plausibles (24 valores, rango físico,
+  curva suave) en la posición de la tabla. Por eso una validación solo-estructural daba 100%.
+- PERO al comparar contra la **tabla impresa** (rasterizada, lo que ve el humano), en la
+  MISMA posición (enero, fila exterior):
+  - capa de texto: `15,8 14,9 13,8 12,7 12,1 11,8 ...`
+  - tabla impresa: `11,9 10,9 10,4 10,0 10,0 11,0 ...`
+  - **No coinciden.** La capa de texto es un decoy (datos obsoletos o de otra capa de render).
+- El OCR del método legacy sobre esa tabla produce ruido (`104,0`, `25,124`, `322,922`),
+  confirmando por qué los intentos previos fallaron: la tabla es difícil de OCR-ear.
 
-**Implicación:** desaparece el problema de rendimiento (no hay ~45M llamadas Tesseract), el problema de detección 2-vs-3, y el riesgo principal del proyecto. OCR queda como **fallback** solo para PDFs sin capa de texto (escaneados), si existen — a confirmar sobre una muestra mayor en Fase 1.
+**Implicación:** se mantiene el PLAN ORIGINAL — OCR para la página 6 es obligatorio y sigue
+siendo el reto mayor del proyecto. La Fase 1 (harness de calibración OCR con criterio ≥95%
+24/24) procede tal como estaba previsto. NO se debe confiar en la capa de texto de la pág. 6.
+Evidencia: `phase0/outputs/PROOF_enero_table_vs_textlayer.png` (render de la tabla impresa).
 
 ## Test A — Coordenadas
 - Coordenadas legacy de `get_page_coordinates()` siguen válidas para v2 (extraen región, código, etc.).
@@ -45,14 +64,14 @@ La premisa del PROMPT ("números diminutos en gráficos de Excel → OCR; 2 vs 3
 - Acceso a PDFs: por `fileId` / query de carpeta (`q="'FOLDER_ID' in parents"`), NO por ruta. Sin FUSE.
 
 ## Test E — SQLite legacy + reconciliación
-- Esquema legacy = 14 tablas, idéntico al SQLModel de datacev. `informe_v2_pagina6` = (eval_id, codigo_evaluacion, mes, hora, temp_exterior, temp_interior) → **solo 2 perfiles**, refuerza Test C.
+- Esquema legacy = 14 tablas, idéntico al SQLModel de datacev. `informe_v2_pagina6` = (eval_id, codigo_evaluacion, mes, hora, temp_exterior, temp_interior) → **solo 2 perfiles** (exterior/interior).
 - `evaluaciones` no tiene `region_id` (región vía FK comuna→region).
 - **Reconciliación Drive↔directorio:** el UUID del nombre de archivo NO es el eval_id. La llave real es `codigo_evaluacion` leído del PDF (consistente en págs 1/3/7), que se cruza con el directorio. Tarea de Fase 4.
 
 ---
 
 ## Decisiones que habilita esta fase
-1. **Pág. 6 por capa de texto (primario), OCR solo fallback.** Reescribe el plan de Fase 1.
+1. **Pág. 6 requiere OCR (plan original).** NO confiar en la capa de texto — es un decoy. Fase 1 = harness de calibración OCR con criterio ≥95% 24/24.
 2. v1/v2 por `page_count`.
 3. Portal con https; reusar form-data legacy.
 4. gws headless con backend `file`; reconciliar por `codigo_evaluacion`.
