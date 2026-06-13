@@ -25,7 +25,6 @@ def normalize_coordinates(
         return 0.0, 0.0
 
 
-
 def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, float]]:
     """
     Get coordinates for each page based on the page number.
@@ -46,8 +45,8 @@ def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, 
             'comuna': (29.2, 33.0, 165.3, 38.2),
             'direccion': (31.3, 39.1, 165.3, 44.3),
             'rol_vivienda_proyecto': (55.5, 45.6, 165.3, 50.8),
-            'tipo_vivienda': (45.9, 51.7, 165.3, 56.9),
-            'superficie_interior_util_m2': (53.0, 58.3, 70.0, 63.5),
+            'tipo_vivienda': (43.7, 51.7, 165.3, 56.9),
+            'superficie_interior_util_m2': (53.0, 58.3, 75.0, 63.5),
             'porcentaje_ahorro_raw': (5.6, 78.6, 165.8, 191.3),
             'demanda_calefaccion_kwh_m2_ano_raw': (15.6, 220.0, 73.0, 230.0),
             'demanda_enfriamiento_kwh_m2_ano_raw': (90.0, 220.0, 151.5, 230.0),
@@ -63,8 +62,8 @@ def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, 
             'direccion': (40.4, 58.9, 95.0, 63.1),
             'rol_vivienda': (40.4, 64.6, 95.0, 68.9),
             'tipo_vivienda': (40.4, 70.2, 95.0, 74.4),
-            'zona_termica': (143.1, 47.5, 151.0, 51.7),
-            'superficie_interior_util_m2_raw': (143.1, 53.3, 151.0, 57.5),
+            'zona_termica': (143.1, 47.5, 154.0, 51.7),
+            'superficie_interior_util_m2_raw': (143.1, 53.3, 154.0, 57.5),
             'solicitado_por': (143.1, 58.9, 210.5, 63.1),
             'evaluado_por': (143.1, 64.7, 210.5, 68.9),
             'codigo_evaluacion': (143.1, 70.2, 163.0, 74.5),
@@ -229,7 +228,6 @@ def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, 
         return {}
 
 
-
 def draw_extraction_rectangles(pdf_report: fitz.Document, page_num: int, coordinates: Dict[str, Tuple[float, float, float, float]] = None, output_path: str = None) -> fitz.Document:
     """
     Draw rectangles on a specific page of the PDF to visualize the extraction areas.
@@ -320,7 +318,8 @@ def draw_extraction_rectangles(pdf_report: fitz.Document, page_num: int, coordin
                 logging.error(f"Error drawing rectangle for {field_name}: {e}")
                 continue
 
-        logging.info(f"Page {page_num + 1}: Successfully drew {rectangles_drawn} rectangles out of {len(coordinates)} defined coordinates.")
+        logging.info(
+            f"Page {page_num + 1}: Successfully drew {rectangles_drawn} rectangles out of {len(coordinates)} defined coordinates.")
 
         # Guardar si se especifica una ruta
         if output_path:
@@ -333,7 +332,6 @@ def draw_extraction_rectangles(pdf_report: fitz.Document, page_num: int, coordin
         logging.error(f"Error drawing rectangles on page {page_num + 1}: {e}")
         logging.error(f"Error drawing rectangles on page {page_num + 1}: {e}")
         return pdf_report
-
 
 
 def draw_all_pages_rectangles(pdf_report: fitz.Document, output_path: str = None) -> fitz.Document:
@@ -361,14 +359,17 @@ def draw_all_pages_rectangles(pdf_report: fitz.Document, output_path: str = None
                 draw_extraction_rectangles(pdf_report, page_num, coordinates)
                 total_rectangles += len(coordinates)
             else:
-                logging.warning(f"No coordinates defined for page {page_num + 1}")
+                logging.warning(
+                    f"No coordinates defined for page {page_num + 1}")
 
-        logging.info(f"Total rectangles drawn across all pages: {total_rectangles}")
+        logging.info(
+            f"Total rectangles drawn across all pages: {total_rectangles}")
 
         # Guardar si se especifica una ruta
         if output_path:
             pdf_report.save(output_path)
-            logging.info(f"PDF completo con rectángulos guardado en: {output_path}")
+            logging.info(
+                f"PDF completo con rectángulos guardado en: {output_path}")
 
         return pdf_report
 
@@ -376,4 +377,3 @@ def draw_all_pages_rectangles(pdf_report: fitz.Document, output_path: str = None
         logging.error(f"Error drawing rectangles on all pages: {e}")
         logging.error(f"Error drawing rectangles on all pages: {e}")
         return pdf_report
-
