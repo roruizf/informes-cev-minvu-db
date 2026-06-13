@@ -11,10 +11,11 @@ PostgreSQL y los espeja (una vía) en NoCodeBackend para consumo por agentes.
 | 0 — Factibilidad | ✅ | Pruebas A-E + reporte |
 | 1 — OCR página 6 | ✅ | Template matching 94.8% (`phase1/`) |
 | 2 — Scaffolding | ✅ | `docker compose up` + 16 regiones |
-| 3 — Discovery | ⏳ | Scraping del directorio MINVU |
-| 4 — PDF pipeline | ⏳ | Descarga + extracción + cleanup |
-| 5 — Mirror | ⏳ | Sync incremental a NoCodeBackend |
-| 6 — Deploy | ⏳ | 24/7 en Zeabur |
+| 3 — Discovery | ✅ | Scraping del directorio MINVU (`cev discover`) |
+| 4 — PDF pipeline | ✅ | Extracción (págs 1-5,7 coords + 6 OCR) → 8 tablas |
+| 4b — Schema | ✅ | Renames, tipos, tablas referencia + FK |
+| 5 — Mirror | ✅ | Sync incremental a NoCodeBackend (`cev sync-mirror`) |
+| 6 — Deploy | ✅ | Scheduler embebido + cleanup; deploy-ready Zeabur (ver DEPLOY.md) |
 
 ## Desarrollo local
 
