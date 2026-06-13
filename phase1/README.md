@@ -52,11 +52,15 @@ Cada variante: parámetros Tesseract, DPI, preprocesamiento, y resultado en prec
 | 9 | EasyOCR | fila + separadores blancos en bordes de columna | allowlist | fila con gaps + bin x | ext 13/24 int 8/24 | grilla CONFIRMADA correcta (separadores caen en los gaps), pero EasyOCR aún puentea bordes y a veces recorta último dígito. |
 | (Tess psm7/8/13 sobre celda limpia) | 600 | crop+blur+Otsu | psm 7/8/13 whitelist | celda | ~12/24 | error sistemático: `1` fantasma a la izq (`111.6`←`11.9`) aun con celda perfectamente recortada. Límite del motor. |
 
-**CONCLUSIÓN tras 9 variantes (umbral de intentos razonables alcanzado):** ningún motor
-off-the-shelf (Tesseract ni EasyOCR; por-celda, por-fila o con separadores) supera ~65%.
-El reconocimiento individual es bueno; el fallo residual (~35%) viene de fusión de celdas
-(EasyOCR) o dígito fantasma (Tesseract) que resisten el tuning. La grilla de columnas SÍ
-está bien detectada. Decisión de enfoque pendiente con Roberto.
+**Variantes 1-9 (Tesseract/EasyOCR):** techo ~65%. Fallo residual por fusión de celdas
+(EasyOCR) o dígito fantasma (Tesseract). Grilla de columnas bien detectada.
+
+| 10 | template matching | 600 | segmentación de GLIFOS + plantillas por dígito | clasificación por correlación (TM_CCOEFF_NORMED) | **enero 45/48 (94%), julio 46/48 (96%, datos no vistos)** | ¡FUNCIONA! La fuente es constante → plantillas de dígito generalizan. Filtra remanente de línea de grid (el "1 fantasma") por altura. Misses son confusiones de 1 dígito (5↔6) mejorables con más muestras. |
+
+**CONCLUSIÓN:** el enfoque ganador es **template matching de dígitos** (no OCR de texto libre).
+Rompe el techo de 65% → ~94-96% validado en datos no vistos. Causa raíz resuelta: la fuente
+del informe es única, así que clasificar glifos individuales contra plantillas vence a los
+motores OCR genéricos. Siguiente: ampliar plantillas (más muestras/dígito) y escalar a 5→60 PDF.
 
 ---
 
