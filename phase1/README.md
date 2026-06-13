@@ -97,5 +97,14 @@ de 1 dígito); R12/enero también ~correcto (las 78 flags vienen de otros meses)
 **Errores residuales:** confusiones de 1 dígito (5↔6 principalmente) y celdas con grid atípico.
 Mejorables, pero ya por encima del umbral ≥90% de cierre de Fase 1.
 
-**Conclusión:** Fase 1 cumple el criterio de cierre (≥90% en los 58). Pendiente: visto bueno de
-Roberto sobre la evidencia estratificada → cerrar Fase 1 y pasar a Fase 2 (scaffolding).
+**Conclusión:** Fase 1 CERRADA (≥90% cumplido; 94.8% vs GT, aprobado por Roberto 2026-06-13).
+Merge fase-1 → develop.
+
+## Deuda técnica diferida a Fase 4 (al integrar el extractor real)
+- Confusiones de 1 dígito **5↔6**: mejorar con más ejemplares o normalización de glifo.
+- **Outlier R12_239_1** (78 flags en abril/octubre): diagnosticar grid/layout atípico —
+  posible variante de coordenadas de banda. Revisar `_column_bounds`/`_data_row_bands` para
+  ese caso.
+- Validación de correctitud a escala: el 98.1% es proxy (plausibilidad); en Fase 4 añadir
+  validación contra GT en una muestra mayor + el flagging `ocr_low_confidence` que dispara
+  fallback y retiene el PDF para revisión.
