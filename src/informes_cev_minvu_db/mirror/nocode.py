@@ -62,6 +62,7 @@ class NocodeMirror:
         self.access_token = settings.nocodebackend_access_token if access_token is None else access_token
         self.mcp_url = mcp_url or _MCP_URL
         self._session = session or requests.Session()
+        self._ensured: set[str] = set()  # tables we've already CREATE-TABLE'd this run
 
     @property
     def enabled(self) -> bool:
@@ -87,12 +88,23 @@ class NocodeMirror:
         return data.get("result", {})
 
     def ensure_table(self, table: str, rows: list[dict]) -> str:
+        if table in self._ensured:
+            return "cached"
         if not self.access_token:
             return "skip: no access token"
         if not rows:
             return "skip: no rows"
+        # If the table already has data, it exists — skip DDL (avoids the MCP
+        # "user email limit check" warning on no-op CREATE TABLE IF NOT EXISTS).
+        try:
+            if self.search(table, {}):
+                self._ensured.add(table)
+                return "exists"
+        except Exception:  # noqa: BLE001
+            pass
         try:
             self._mcp_execute_sql(_infer_ddl(table, rows))
+            self._ensured.add(table)
             return "ok"
         except Exception as e:  # noqa: BLE001
             logger.warning("ensure_table %s failed: %s", table, e)
