@@ -152,6 +152,23 @@ def _data_row_bands(gray, col_bounds):
     return [(h // 3, 2 * h // 3), (2 * h // 3, h)]
 
 
+def _erase_grid_lines(g):
+    """Remove long thin horizontal/vertical lines from a grayscale cell/region,
+    leaving the digits. Returns a cleaned grayscale image (lines -> white)."""
+    _, binv = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    h, w = g.shape
+    # vertical lines: structuring element tall & 1px wide
+    vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(8, h * 2 // 3)))
+    vlines = cv2.morphologyEx(binv, cv2.MORPH_OPEN, vk)
+    hk = cv2.getStructuringElement(cv2.MORPH_RECT, (max(8, w * 2 // 3), 1))
+    hlines = cv2.morphologyEx(binv, cv2.MORPH_OPEN, hk)
+    lines = cv2.dilate(cv2.bitwise_or(vlines, hlines),
+                       cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)))
+    out = g.copy()
+    out[lines > 0] = 255
+    return out
+
+
 def _crop_to_digits(g):
     """Crop a grayscale cell to its digit blobs, discarding grid-line fragments.
 

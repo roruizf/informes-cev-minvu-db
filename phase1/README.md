@@ -44,9 +44,24 @@ Cada variante: parámetros Tesseract, DPI, preprocesamiento, y resultado en prec
 | 1 | 600 | adaptiveThreshold + morfología | `--psm 8` whitelist `0-9,.` | celda (vlines + filas en tercios) | ~0% (basura) | vlines bien detectadas (~107px), pero: (a) boundaries desfasadas 1 col, (b) filas por tercios cortan los dígitos → fila interior toda None, (c) ruido de vlines en etiqueta y margen. Segmentación a corregir. |
 | 2 | 600 | adaptiveThreshold | `--psm 8` whitelist | columnas por pitch mediano + filas por bandas de tinta (con bordes) | ~0% (todo None) | columnas reconstruidas bien (pitch 108px, 25 bounds), pero las "filas" detectaban las LÍNEAS del grid (49,118,187), no el texto → celdas vacías. |
 | 3 | 600 | resize×2 + Otsu + borde | `--psm 8` whitelist `0-9,.` | columnas por pitch + filas por proyección de tinta en región de datos | ~parcial (valores reconocibles con dígito extra) | ¡filas correctas! Lee `12.6`,`22.3` exactos. Error sistemático: dígito de más a la izq (`111.9`→`11.9`, `114.6`→`14.6`): la celda sangra al vecino izq / grid. Falta inset de celda + ajuste de anclaje. |
-| 4 | 600 | resize×2 + Otsu + borde | `--psm 8` whitelist `0-9,.` | columnas por pitch + inset celda 16%/4% | enero ext **16/24**, int **12/24** | Gran salto: muchas celdas exactas (`10.4 10.0 11.0 12.6 14.6 16.6 18.3`). Inset fijo no es robusto a la posición variable del dígito (`218.0`,`270.9` aún sangran; `7.0` pierde dígito). Siguiente: recorte por componentes conexas (blobs de dígito) dentro de celda + filtrar fragmentos de grid. |
+| 4 | 600 | resize×2 + Otsu + borde | `--psm 8` whitelist `0-9,.` | columnas por pitch + inset celda 16%/4% | enero ext **16/24**, int **12/24** | Gran salto: muchas celdas exactas. Inset fijo no robusto. |
+| 5 | 600 | componentes conexas + resize×3 | `--psm 8` whitelist | columnas + crop a blobs de dígito | ext 14/24, int 5/24 | crop funde dígitos vecinos; no mejora. |
+| 6 | 600 | + borrado de líneas de grid (morfología) | `--psm 8` | celda | **0/24** | borrado de líneas demasiado agresivo, come trazos de dígitos. REVERTIDO. |
+| 7 | EasyOCR (torch CPU) | resize×3 fila completa | allowlist `0-9.,-` | fila entera, bin por x-center | ext **11/24** int 3/24 | EasyOCR RECONOCE excelente (`11.9 10.9 10.4 10.0 11.0 12.6 14.6 16.6` exactos) pero agrupa celdas vecinas en una caja (`21.8122312251223`). Recognition buena, segmentación de fila mala. → dar UNA celda a la vez. |
 
 ---
 
+## Hallazgo doc2md (importante)
+
+- doc2md sobre el **PDF** de pág.6 → `ocr_applied: false`, lee la CAPA DE TEXTO DECOY
+  (`15,8 14,9...`) = valores INCORRECTOS. Confirma de nuevo que la capa de texto engaña.
+- doc2md sobre la **imagen rasterizada** de pág.6 (forzando OCR) → lee `11.9 10.9 10.4`
+  (exterior) y `23.0 22.3 21.5` (interior) = **CORRECTOS** en las primeras celdas. Pero su
+  OCR de página completa funde celdas (`230/|223/215`, `1015.0`) y no entrega 24 valores
+  separados (encontró 34 números donde debían ser 24).
+- **Conclusión:** la receta ganadora = RASTERIZAR (evita el decoy) + SEGMENTAR por celda
+  (fuerza 24 valores) + OCR de celda única. doc2md prueba que los valores correctos SÍ son
+  OCR-ables; el reto es la disciplina de segmentación, no el motor.
+
 ## Resultados
-_(pendiente)_
+_(en progreso — iterando segmentación por celda hasta ≥90% en 3-5 PDF)_
