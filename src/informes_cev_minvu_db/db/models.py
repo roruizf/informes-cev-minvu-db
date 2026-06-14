@@ -1,10 +1,14 @@
 """SQLModel schema for informes-cev-minvu-db.
 
-Conventions (Roberto, 2026-06-13): names end `_nombre`; no abbreviations
+Conventions (Roberto): names end `_nombre`; no abbreviations
 (calefaccion/enfriamiento/proyectado/referencia/energia_primaria/porcentaje/
-temperatura); string dimensions normalized to FK reference tables. Controlled
-redundancy is intentional: page tables keep codigo_evaluacion/region_nombre/
-comuna_nombre/direccion/tipo_vivienda_id so each is self-contained for API/agents.
+temperatura). LAYER 1 = capture raw PDF values faithfully; do NOT over-normalize.
+Free-text / fixed dimensions (tipo_vivienda, zona_termica, orientacion,
+tipo_evaluacion) are stored as `_nombre: str` directly, NOT as FK reference tables
+(cleaning/normalization is a future Layer 2 concern). Only truly structural dims
+remain as tables: regiones, comunas, meses, tipos_evaluacion. Controlled redundancy
+is intentional: page tables keep codigo_evaluacion_energetica/region_nombre/
+comuna_nombre/direccion so each is self-contained for API/agents.
 
 Pages 1-5,7 extracted by coordinates; page 6 (temps) by template-matching OCR.
 """
@@ -42,22 +46,8 @@ class Meses(SQLModel, table=True):
     mes_id: int = Field(primary_key=True)
     mes_nombre: str = Field(unique=True)
 
-
-class Orientaciones(SQLModel, table=True):
-    orientacion_id: int = Field(primary_key=True)
-    orientacion_nombre: str = Field(unique=True)
-
-
-class TiposVivienda(SQLModel, table=True):
-    __tablename__ = "tipos_vivienda"
-    tipo_vivienda_id: Optional[int] = Field(default=None, primary_key=True)
-    tipo_vivienda_nombre: str = Field(unique=True, index=True)
-
-
-class ZonasTermicas(SQLModel, table=True):
-    __tablename__ = "zonas_termicas"
-    zona_termica_id: int = Field(primary_key=True)
-    zona_termica_nombre: str = Field(unique=True)
+# NOTE: orientaciones, tipos_vivienda, zonas_termicas were removed (Layer-1 raw
+# capture): those values are stored as `_nombre: str` directly in the page tables.
 
 
 # ── Discovery / scraping mechanics (NOT mirrored) ───────────────────────────
@@ -125,13 +115,13 @@ class Evaluaciones(SQLModel, table=True):
 class InformeV2Pagina1(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina1"
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", primary_key=True)
-    codigo_evaluacion: Optional[str] = None
+    codigo_evaluacion_energetica: Optional[str] = None
     tipo_evaluacion_nombre: Optional[str] = None
     region_nombre: Optional[str] = None
     comuna_nombre: Optional[str] = None
     direccion: Optional[str] = None
     rol_vivienda_proyecto: Optional[str] = None
-    tipo_vivienda_id: Optional[int] = Field(default=None, foreign_key="tipos_vivienda.tipo_vivienda_id")
+    tipo_vivienda_nombre: Optional[str] = None
     superficie_interior_util_m2: Optional[float] = None
     porcentaje_ahorro: Optional[float] = None
     letra_eficiencia_energetica_dem: Optional[str] = None
@@ -146,13 +136,13 @@ class InformeV2Pagina1(SQLModel, table=True):
 class InformeV2Pagina2(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina2"
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", primary_key=True)
-    codigo_evaluacion: Optional[str] = None
+    codigo_evaluacion_energetica: Optional[str] = None
     region_nombre: Optional[str] = None
     comuna_nombre: Optional[str] = None
     direccion: Optional[str] = None
     rol_vivienda: Optional[str] = None
-    tipo_vivienda_id: Optional[int] = Field(default=None, foreign_key="tipos_vivienda.tipo_vivienda_id")
-    zona_termica_id: Optional[int] = Field(default=None, foreign_key="zonas_termicas.zona_termica_id")
+    tipo_vivienda_nombre: Optional[str] = None
+    zona_termica_nombre: Optional[str] = None
     superficie_interior_util_m2: Optional[float] = None
     solicitado_por: Optional[str] = None
     evaluado_por: Optional[str] = None
@@ -189,7 +179,7 @@ class InformeV2Pagina2(SQLModel, table=True):
 class InformeV2Pagina3Consumos(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina3_consumos"
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", primary_key=True)
-    codigo_evaluacion: Optional[str] = None
+    codigo_evaluacion_energetica: Optional[str] = None
     agua_caliente_sanitaria_kwh_m2: Optional[float] = None
     agua_caliente_sanitaria_porcentaje: Optional[float] = None
     iluminacion_kwh_m2: Optional[float] = None
@@ -249,8 +239,8 @@ class InformeV2Pagina3Envolvente(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina3_envolvente"
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
-    codigo_evaluacion: Optional[str] = None
-    orientacion_id: Optional[int] = Field(default=None, foreign_key="orientaciones.orientacion_id")
+    codigo_evaluacion_energetica: Optional[str] = None
+    orientacion_nombre: Optional[str] = None
     elementos_opacos_area_m2: Optional[float] = None
     elementos_opacos_u_w_m2_k: Optional[float] = None
     elementos_traslucidos_area_m2: Optional[float] = None
@@ -263,14 +253,14 @@ class InformeV2Pagina3Envolvente(SQLModel, table=True):
     ua_mas_phi_l: Optional[float] = None
 
     evaluacion: Evaluaciones = Relationship(back_populates="pagina3_envolvente")
-    __table_args__ = (UniqueConstraint("eval_id", "orientacion_id", name="uq_eval_orient_p3e"),)
+    __table_args__ = (UniqueConstraint("eval_id", "orientacion_nombre", name="uq_eval_orient_p3e"),)
 
 
 class InformeV2Pagina4(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina4"
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
-    codigo_evaluacion: Optional[str] = None
+    codigo_evaluacion_energetica: Optional[str] = None
     mes_id: Optional[int] = Field(default=None, foreign_key="meses.mes_id")
     demanda_calefaccion_viv_eval_kwh: Optional[float] = None
     demanda_calefaccion_viv_ref_kwh: Optional[float] = None
@@ -289,7 +279,7 @@ class InformeV2Pagina5(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina5"
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
-    codigo_evaluacion: Optional[str] = None
+    codigo_evaluacion_energetica: Optional[str] = None
     mes_id: Optional[int] = Field(default=None, foreign_key="meses.mes_id")
     q_recuperado_kwh: Optional[float] = None
     q_puentes_termicos_kwh: Optional[float] = None
@@ -310,7 +300,7 @@ class InformeV2Pagina6(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina6"
     id: Optional[int] = Field(default=None, primary_key=True)
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", index=True)
-    codigo_evaluacion: Optional[str] = None
+    codigo_evaluacion_energetica: Optional[str] = None
     mes_id: Optional[int] = Field(default=None, foreign_key="meses.mes_id")
     hora: Optional[int] = None
     temperatura_exterior: Optional[float] = None
@@ -324,7 +314,7 @@ class InformeV2Pagina6(SQLModel, table=True):
 class InformeV2Pagina7(SQLModel, table=True):
     __tablename__ = "informe_v2_pagina7"
     eval_id: str = Field(foreign_key="evaluaciones.eval_id", primary_key=True)
-    codigo_evaluacion: Optional[str] = None
+    codigo_evaluacion_energetica: Optional[str] = None
     mandante_nombre: Optional[str] = None
     mandante_rut: Optional[str] = None
     evaluador_nombre: Optional[str] = None

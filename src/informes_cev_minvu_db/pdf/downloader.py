@@ -1,26 +1,23 @@
-"""PDF acquisition: MINVU portal download + Google Drive (gws) reuse.
+"""PDF acquisition from the MINVU portal.
 
-Hybrid strategy (Phase-4): prefer reusing a PDF already on Drive; fall back to
-downloading from the MINVU portal. Drive reconciliation is by codigo_evaluacion
-(Phase-0 finding: the Drive filename UUID is NOT the eval_id).
+Layer-1: the saved viewstate caducates, so we do a fresh load→select_region→search
+to obtain a valid viewstate, then the codigo_informe postback returns the PDF.
+Drive reuse is intentionally NOT here (separate future task).
 """
-import json
 import logging
-import subprocess
 from pathlib import Path
 
-from informes_cev_minvu_db.config import settings
-from informes_cev_minvu_db.discovery.portal_client import PortalClient, TOOLKIT
+from informes_cev_minvu_db.discovery.portal_client import PortalClient
 
 logger = logging.getLogger(__name__)
-GWS = "/home/linuxbrew/.linuxbrew/bin/gws"
 
 
 def download_from_minvu(eval_row, dest: Path, region_id: int, comuna_id: int,
-                        tipo: int, viewstate: str) -> bool:
+                        tipo: int) -> bool:
     """Download a report PDF from the portal via the codigo_informe postback.
 
     eval_row.codigo_informe is the input control name; the postback returns the PDF.
+    A fresh viewstate is obtained each call (the stored one expires).
     """
     if not eval_row.codigo_informe:
         return False
@@ -45,34 +42,3 @@ def download_from_minvu(eval_row, dest: Path, region_id: int, comuna_id: int,
         return False
     finally:
         client.close()
-
-
-def _gws_json(args, timeout=120):
-    p = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-    try:
-        return json.loads(p.stdout)
-    except json.JSONDecodeError:
-        return {}
-
-
-def find_on_drive(codigo_evaluacion: str, region_id: int) -> str | None:
-    """Locate a PDF on Drive whose filename matches the eval. Returns fileId or None.
-
-    Drive layout: pdf_files/{region}/{region}_{comuna}_{tipo}_{uuid}.pdf — filename
-    does not embed codigo_evaluacion, so matching is best-effort by region folder.
-    Full reconciliation (open PDF, read codigo) is done by the pipeline if needed.
-    """
-    # Placeholder: real reconciliation resolves the region folder id then lists.
-    # Kept minimal here; the pipeline currently supports local/MINVU paths.
-    return None
-
-
-def download_from_drive(file_id: str, dest: Path) -> bool:
-    try:
-        subprocess.run([GWS, "drive", "files", "get", "--params",
-                        json.dumps({"fileId": file_id, "alt": "media"}),
-                        "--output", str(dest)], capture_output=True, text=True, timeout=240)
-        return dest.exists() and dest.stat().st_size > 1000
-    except Exception as e:  # noqa: BLE001
-        logger.warning("drive download failed: %s", e)
-        return False

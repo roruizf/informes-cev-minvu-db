@@ -12,9 +12,9 @@ src/informes_cev_minvu_db/
 ├── scheduler.py         # APScheduler embebido (job diario 03:00 UTC)
 ├── cli.py               # cev init|discover|process-pdf|sync-mirror|daily|cleanup
 ├── db/
-│   ├── models.py        # 18 tablas SQLModel
+│   ├── models.py        # 15 tablas SQLModel
 │   ├── session.py       # engine + get_session()
-│   └── seed.py          # regiones, tipos, meses, orientaciones, zonas_termicas
+│   └── seed.py          # regiones, tipos_evaluacion, meses
 ├── discovery/
 │   ├── portal_client.py # cliente ASP.NET (httpx + VIEWSTATE)
 │   ├── html_parser.py   # XPaths + eval_id determinista
@@ -37,10 +37,15 @@ src/informes_cev_minvu_db/
     └── sync.py          # orquestador run_sync()
 ```
 
-## Schema de BD (18 tablas)
+## Schema de BD (15 tablas)
 
-**Referencia (dimensionales):** `regiones`, `comunas`, `tipos_evaluacion`, `meses`,
-`orientaciones`, `tipos_vivienda`, `zonas_termicas`.
+**Filosofía Capa 1:** capturar el valor crudo del PDF. Las dimensiones de texto
+libre / fijas (tipo_vivienda, zona_termica, orientacion, tipo_evaluacion en pág1)
+se guardan como `_nombre: str` directo — NO como tablas de referencia FK (la
+limpieza/normalización es una Capa 2 futura).
+
+**Referencia (dimensionales, solo estructurales):** `regiones`, `comunas`,
+`tipos_evaluacion`, `meses`.
 **Mecánica de scraping (NO se espejan):** `busquedas`, `paginas_html`.
 **Directorio + datos:** `evaluaciones` + `informe_v2_pagina1..7`.
 
@@ -53,15 +58,15 @@ codigo_informe, codigo_etiqueta, pdf_download_status, report_version, retry_coun
 last_error, last_processed_at, synced_to_mirror_at.
 
 ### informe_v2_pagina1 (etiqueta)
-eval_id PK FK, codigo_evaluacion, tipo_evaluacion_nombre, region_nombre, comuna_nombre,
-direccion, rol_vivienda_proyecto, tipo_vivienda_id FK, superficie_interior_util_m2,
+eval_id PK FK, codigo_evaluacion_energetica, tipo_evaluacion_nombre, region_nombre, comuna_nombre,
+direccion, rol_vivienda_proyecto, tipo_vivienda_nombre (texto crudo), superficie_interior_util_m2,
 porcentaje_ahorro:FLOAT, letra_eficiencia_energetica_dem,
 demanda_calefaccion_kwh_m2_ano, demanda_enfriamiento_kwh_m2_ano, demanda_total_kwh_m2_ano,
 emitida_el:DATE.
 
 ### informe_v2_pagina2 (envolvente descriptiva)
-eval_id PK FK, + region_nombre, comuna_nombre, direccion, rol_vivienda, tipo_vivienda_id FK,
-zona_termica_id FK, superficie_interior_util_m2, solicitado_por, evaluado_por,
+eval_id PK FK, + region_nombre, comuna_nombre, direccion, rol_vivienda, tipo_vivienda_nombre,
+zona_termica_nombre (texto crudo, ej "G"), superficie_interior_util_m2, solicitado_por, evaluado_por,
 demandas (calefaccion/enfriamiento/total/total_bis/total_referencia), porcentaje_ahorro,
 y por elemento {muro_principal, muro_secundario, piso_principal, puerta_principal,
 techo_principal, techo_secundario, superficie_vidriada_principal/secundaria,
@@ -74,7 +79,7 @@ _proyectado_/_referencia_ (descripcion/kwh/porcentaje); consumo_energia_primaria
 fotovoltaica/solar_termica; coeficiente_energetico_c.
 
 ### informe_v2_pagina3_envolvente (10 filas/eval, una por orientación)
-id PK, eval_id FK, orientacion_id FK, elementos_opacos_area_m2, elementos_opacos_u_w_m2_k,
+id PK, eval_id FK, orientacion_nombre (texto crudo: Horiz/N/NE/.../Pisos), elementos_opacos_area_m2, elementos_opacos_u_w_m2_k,
 elementos_traslucidos_area_m2, elementos_traslucidos_u_w_m2_k, p01_w_k..p05_w_k, ua_mas_phi_l.
 
 ### informe_v2_pagina4 (12 filas/eval, demanda mensual)
@@ -104,7 +109,7 @@ evaluador_rol_minvu.
 - **Mirror incremental**: upsert por clave de negocio (`eval_id`; multi-fila por `mirror_key`
   compuesto). Nunca full-replace (sería fatal a 156K).
 - **Redundancia controlada (intencional)**: cada `informe_v2_paginaN` repite
-  codigo_evaluacion/region_nombre/comuna_nombre/direccion/tipo_vivienda_id para ser
+  codigo_evaluacion_energetica/region_nombre/comuna_nombre/direccion/tipo_vivienda_nombre para ser
   autocontenida — los agentes consultan sin JOINs. No "normalizar" esto.
 - **Página 6 = 2 filas tabulares siempre** (temperatura_exterior, temperatura_interior).
   El "3er perfil" visible (Temperatura media de confort) es solo una línea del gráfico,
@@ -138,7 +143,10 @@ discover (portal) → evaluaciones[pending]
 
 ## Deuda técnica conocida
 
-- `pdf/downloader.find_on_drive` es un STUB (reconciliación Drive↔eval por codigo_evaluacion
-  pendiente para el backfill desde Drive).
+- Reutilización de PDFs de Google Drive: NO implementada (tarea futura aparte).
+  `download_from_minvu` es la única vía de descarga; obtiene un viewstate fresco por
+  llamada (el guardado caduca).
+- Pendiente (Fase 8): `daily.py` aún no procesa la cola de pendientes (solo mirror+cleanup);
+  falta `cev backfill`; sin tests automatizados todavía.
 - OCR pág 6: confusiones ocasionales de 1 dígito (5↔6) y un caso de grid atípico (R12);
   las celdas dudosas se marcan `ocr_low_confidence=true`.

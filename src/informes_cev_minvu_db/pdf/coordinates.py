@@ -333,7 +333,6 @@ def draw_extraction_rectangles(pdf_report: fitz.Document, page_num: int, coordin
 
     except Exception as e:
         logging.error(f"Error drawing rectangles on page {page_num + 1}: {e}")
-        logging.error(f"Error drawing rectangles on page {page_num + 1}: {e}")
         return pdf_report
 
 
@@ -377,6 +376,5 @@ def draw_all_pages_rectangles(pdf_report: fitz.Document, output_path: str = None
         return pdf_report
 
     except Exception as e:
-        logging.error(f"Error drawing rectangles on all pages: {e}")
         logging.error(f"Error drawing rectangles on all pages: {e}")
         return pdf_report
