@@ -27,16 +27,21 @@ def count_pending() -> int:
         ).all())
 
 
-def run_daily(sync_limit: int | None = None) -> dict:
-    """Stable-phase daily tick: mirror newly-extracted data + housekeeping.
+def run_daily(sync_limit: int | None = None, process_limit: int | None = None) -> dict:
+    """Stable-phase daily tick: drain pending → mirror → housekeeping.
 
     Returns a summary dict (also used by /health/last-scrape style reporting).
+    process_limit caps how many pending PDFs to extract per tick (None = all).
     """
+    from informes_cev_minvu_db.pipeline.queue import process_pending
+
     summary = {}
     summary["pending_before"] = count_pending()
-    # mirror anything extracted-but-not-synced (incremental)
+    # 1) drain the pending queue: download → extract → persist (B1)
+    summary["process"] = process_pending(limit=process_limit)
+    # 2) mirror anything extracted-but-not-synced (incremental)
     summary["mirror"] = run_sync(limit=sync_limit, full=False)
-    # housekeeping
+    # 3) housekeeping
     summary["cleanup"] = cleanup_orphans()
     logger.info("daily job: %s", summary)
     return summary

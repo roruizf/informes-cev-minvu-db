@@ -25,6 +25,15 @@ def main() -> None:
     sm.add_argument("--full", action="store_true", help="re-sync all (ignore synced flag)")
     sub.add_parser("cleanup", help="remove orphan local PDFs older than N days")
     sub.add_parser("daily", help="run the daily incremental job once")
+    pq = sub.add_parser("process-pending", help="drain the pending queue (download+extract)")
+    pq.add_argument("--region", type=int, default=None)
+    pq.add_argument("--limit", type=int, default=None)
+    bf = sub.add_parser("backfill", help="discover a region (or all) + drain pending")
+    bf.add_argument("--region", type=int, default=None, help="region id; omit for all 16")
+    bf.add_argument("--tipo", type=int, choices=[1, 2], default=None)
+    bf.add_argument("--discover-only", action="store_true")
+    bf.add_argument("--max-pages", type=int, default=None)
+    bf.add_argument("--process-limit", type=int, default=None)
     args = p.parse_args()
 
     if args.cmd in ("init-db", "init"):
@@ -61,6 +70,19 @@ def main() -> None:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         from informes_cev_minvu_db.pipeline.daily import run_daily
         print("daily:", run_daily())
+    if args.cmd == "process-pending":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from informes_cev_minvu_db.pipeline.queue import process_pending
+        print("process-pending:", process_pending(region_id=args.region, limit=args.limit))
+    if args.cmd == "backfill":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from informes_cev_minvu_db.pipeline.backfill import backfill
+        tipos = (args.tipo,) if args.tipo else (1, 2)
+        print("backfill:", backfill(region_id=args.region, tipos=tipos,
+                                     discover_only=args.discover_only,
+                                     max_pages=args.max_pages, process_limit=args.process_limit))
 
 
 if __name__ == "__main__":
