@@ -9,7 +9,7 @@ For multi-row detail tables we use a composite text key column `mirror_key`
 (eval_id + discriminator) so incremental upsert can find the exact row.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlmodel import select
 
@@ -19,15 +19,13 @@ from informes_cev_minvu_db.mirror.nocode import NocodeMirror
 
 logger = logging.getLogger(__name__)
 
-# dimensional tables: small, full upsert by their natural key
+# dimensional tables: small, full upsert by their natural key.
+# (orientaciones/tipos_vivienda/zonas_termicas removed — now raw text in pages.)
 _DIMS = [
     ("regiones", M.Regiones, "region_id"),
     ("comunas", M.Comunas, "comuna_id"),
     ("tipos_evaluacion", M.TiposEvaluacion, "tipo_evaluacion_id"),
     ("meses", M.Meses, "mes_id"),
-    ("orientaciones", M.Orientaciones, "orientacion_id"),
-    ("tipos_vivienda", M.TiposVivienda, "tipo_vivienda_id"),
-    ("zonas_termicas", M.ZonasTermicas, "zona_termica_id"),
 ]
 _SINGLE = [
     ("informe_v2_pagina1", M.InformeV2Pagina1),
@@ -36,7 +34,8 @@ _SINGLE = [
     ("informe_v2_pagina7", M.InformeV2Pagina7),
 ]
 _MULTI = [
-    ("informe_v2_pagina3_envolvente", M.InformeV2Pagina3Envolvente, lambda r: f"{r.eval_id}:{r.orientacion_id}"),
+    ("informe_v2_pagina3_envolvente", M.InformeV2Pagina3Envolvente,
+     lambda r: f"{r.eval_id}:{r.orientacion_nombre}"),
     ("informe_v2_pagina4", M.InformeV2Pagina4, lambda r: f"{r.eval_id}:{r.mes_id}"),
     ("informe_v2_pagina5", M.InformeV2Pagina5, lambda r: f"{r.eval_id}:{r.mes_id}"),
     ("informe_v2_pagina6", M.InformeV2Pagina6, lambda r: f"{r.eval_id}:{r.mes_id}:{r.hora}"),
@@ -44,16 +43,15 @@ _MULTI = [
 
 
 def _dump(obj) -> dict:
-    return {c: getattr(obj, c) for c in obj.__table__.columns.keys()}
+    # SQLModel public API; serialize dates below.
+    return obj.model_dump()
 
 
 def _serialize(d: dict) -> dict:
     """JSON-safe: dates/datetimes → iso strings."""
     out = {}
     for k, v in d.items():
-        if isinstance(v, datetime):
-            out[k] = v.isoformat()
-        elif hasattr(v, "isoformat"):
+        if isinstance(v, (date, datetime)):
             out[k] = v.isoformat()
         else:
             out[k] = v
