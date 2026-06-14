@@ -28,9 +28,12 @@ dentro del contenedor.
 ## Operación
 
 - **Fase inicial (backfill ~156K):** comando one-shot desde la consola del servicio:
-  `cev discover --region N` (por región) y luego procesar la cola. NO es el job diario.
+  `cev backfill` (las 16 regiones) o `cev backfill --region N`. Descubre y drena la cola.
+  NO es el job diario. **Nota:** la descarga del PDF desde el portal MINVU tiene un gap
+  conocido (postback AJAX → devuelve HTML); el backfill descubre/encola pero la extracción
+  masiva espera resolver la descarga. Ver `phase8/REPORT.md`.
 - **Fase estable:** el scheduler embebido corre el job diario a `DAILY_SCRAPE_HOUR`:00 UTC
-  (mirror incremental + cleanup de PDFs huérfanos). Disparo manual: `POST /admin/run-daily`.
+  (drena pendientes + mirror incremental + cleanup). Disparo manual: `POST /admin/run-daily`.
 
 ## Endpoints
 - `GET /health` — proceso vivo.

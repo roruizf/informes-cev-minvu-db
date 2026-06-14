@@ -30,7 +30,9 @@ Se ejecutan dentro del contenedor: `docker compose exec app cev <comando>`.
 | `cev discover --region N [--comuna C] [--tipo 1\|2] [--max-pages K]` | Descubre informes del portal → tabla `evaluaciones` |
 | `cev process-pdf --eval-id X --path archivo.pdf [--ensure-eval]` | Procesa un PDF concreto → 8 tablas de detalle |
 | `cev sync-mirror [--limit N] [--full]` | Empuja datos a NoCodeBackend (incremental) |
-| `cev daily` | Corre el job diario una vez (mirror + cleanup) |
+| `cev process-pending [--region N] [--limit K]` | Drena la cola: descarga + extrae los `pending` |
+| `cev backfill [--region N] [--discover-only] [--max-pages K] [--process-limit K]` | Descubre una región (o las 16) y drena la cola |
+| `cev daily` | Job diario: drena pendientes + mirror + cleanup |
 | `cev cleanup` | Borra PDFs locales huérfanos (>N días) |
 
 `--max-pages` limita páginas de resultados (10 informes/página); útil para pruebas.
@@ -40,14 +42,18 @@ El `--full` re-sincroniza todo aunque ya esté marcado como sincronizado.
 
 **Carga inicial (una vez, ~156K informes):**
 ```bash
-# por cada región (1-16); descubre todo el directorio
-docker compose exec app cev discover --region 1
-docker compose exec app cev discover --region 2
-# ... hasta la 16
-# luego procesar la cola de pendientes (descarga + extracción)
-# y sincronizar al espejo
-docker compose exec app cev sync-mirror
+# descubre + procesa todas las regiones (o una): discover -> drena pendientes
+docker compose exec app cev backfill                 # las 16 regiones
+docker compose exec app cev backfill --region 13     # una región
+docker compose exec app cev sync-mirror              # empuja al espejo
 ```
+
+> **Importante (gap conocido):** la descarga del PDF desde el portal MINVU
+> (`download_from_minvu`) aún no funciona — el portal cambió a un flujo de postback
+> AJAX y devuelve HTML en vez del PDF (ver `phase8/REPORT.md`). El backfill descubre
+> y encola correctamente, pero la extracción masiva espera resolver la descarga (o
+> habilitar la reutilización de PDFs desde Google Drive). `cev process-pdf` sobre un
+> PDF local sí funciona de extremo a extremo.
 
 **Operación estable (automática):** el scheduler corre el job diario a las
 `DAILY_SCRAPE_HOUR`:00 UTC: sincroniza lo nuevo al espejo y limpia PDFs huérfanos.

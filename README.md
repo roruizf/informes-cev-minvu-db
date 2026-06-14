@@ -61,7 +61,13 @@ OpenCV + template matching (página 6) · APScheduler · Docker · deploy en Zea
 | 4b — Schema | Renames, tipos, 4 tablas de referencia + FK (18 tablas) |
 | 5 — Mirror | Sync incremental unidireccional a NoCodeBackend |
 | 6 — Deploy | Scheduler embebido + cleanup; deploy-ready Zeabur |
-| 7 — Refactor | Página 5 robustecida (extracción por font-size, sin hacks) |
+| 7 — Refactor | Página 5 robustecida (font-size); schema Capa 1 (15 tablas, texto crudo) |
+| 8 — Operación | daily loop procesa pendientes (B1); `cev backfill` (B3); tests (Q1) |
+
+> **Nota:** la descarga de PDF desde el portal MINVU (`download_from_minvu`) tiene un
+> gap conocido (el portal cambió a postback AJAX; devuelve HTML, no el PDF). Ver
+> `phase8/REPORT.md`. El discovery, la extracción, la persistencia, el mirror y el
+> scheduler están completos y probados; el backfill masivo espera resolver la descarga.
 
 ## Inicio rápido (local)
 
