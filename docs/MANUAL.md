@@ -14,6 +14,7 @@ Copia `.env.example` a `.env` y completa los valores. Variables:
 | `NOCODEBACKEND_ACCESS_TOKEN` | Crear tablas (MCP) | (secreto) |
 | `MINVU_BASE_URL` | Portal MINVU | `https://calificacionenergeticaweb.minvu.cl` |
 | `DOWNLOAD_CONCURRENCY` | Descargas paralelas | `8` |
+| `DOWNLOAD_DELAY` | Segundos entre descargas de PDF (cortesía con el portal) | `1.5` |
 | `PDF_DIR` | Carpeta temporal de PDFs | `/tmp/cev_pdfs` |
 | `PDF_CLEANUP_DAYS` | Días antes de borrar huérfanos | `7` |
 | `DAILY_SCRAPE_HOUR` | Hora del job diario (UTC) | `3` |

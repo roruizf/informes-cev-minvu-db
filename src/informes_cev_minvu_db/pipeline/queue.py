@@ -8,8 +8,10 @@ Failures bump retry_count and set status 'failed' (dead-letter, re-queryable);
 after max_retries they stay 'failed' and are skipped by default.
 """
 import logging
+import time
 from pathlib import Path
 
+from sqlalchemy import func
 from sqlmodel import select
 
 from informes_cev_minvu_db.config import settings
@@ -22,12 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 def _pending_eval_ids(region_id: int | None, limit: int | None) -> list[str]:
+    """Pending eval_ids in RANDOM order — avoids region/comuna bias if a backfill
+    is interrupted (no whole region left unprocessed) and spreads portal load."""
     with get_session() as s:
         q = select(Evaluaciones.eval_id).where(Evaluaciones.pdf_download_status == "pending")
         if region_id is not None:
             comuna_ids = [c.comuna_id for c in
                           s.exec(select(Comunas).where(Comunas.region_id == region_id)).all()]
             q = q.where(Evaluaciones.comuna_id.in_(comuna_ids))
+        q = q.order_by(func.random())
         if limit:
             q = q.limit(limit)
         return list(s.exec(q).all())
@@ -112,11 +117,17 @@ def retry_failed(region_id: int | None = None, max_retries: int | None = None,
     return {"reactivated": reactivated, "max_retries": cap, "drain": drained}
 
 
-def process_pending(region_id: int | None = None, limit: int | None = None) -> dict:
-    """Drain pending evaluations (optionally scoped to a region). Returns a summary."""
+def process_pending(region_id: int | None = None, limit: int | None = None,
+                    delay: float | None = None) -> dict:
+    """Drain pending evaluations (optionally scoped to a region), in random order.
+
+    Sleeps `delay` seconds between downloads (default settings.download_delay) to be
+    polite with the MINVU portal at scale.
+    """
+    delay = settings.download_delay if delay is None else delay
     ids = _pending_eval_ids(region_id, limit)
     summary = {"selected": len(ids), "extracted": 0, "skipped_v1": 0, "failed": 0}
-    for eval_id in ids:
+    for i, eval_id in enumerate(ids):
         try:
             r = process_one(eval_id)
             st = r.get("status")
@@ -130,5 +141,7 @@ def process_pending(region_id: int | None = None, limit: int | None = None) -> d
             logger.exception("process_pending: %s failed", eval_id)
             _mark_failed(eval_id, str(e))
             summary["failed"] += 1
+        if delay and i < len(ids) - 1:
+            time.sleep(delay)
     logger.info("process_pending %s", summary)
     return summary
