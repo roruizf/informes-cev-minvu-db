@@ -63,11 +63,13 @@ OpenCV + template matching (página 6) · APScheduler · Docker · deploy en Zea
 | 6 — Deploy | Scheduler embebido + cleanup; deploy-ready Zeabur |
 | 7 — Refactor | Página 5 robustecida (font-size); schema Capa 1 (15 tablas, texto crudo) |
 | 8 — Operación | daily loop procesa pendientes (B1); `cev backfill` (B3); tests (Q1) |
+| 9 — Descarga + retry | fix descarga MINVU (magic bytes %PDF + trim %%EOF); `cev retry-failed`; `last_seen_at` |
 
-> **Nota:** la descarga de PDF desde el portal MINVU (`download_from_minvu`) tiene un
-> gap conocido (el portal cambió a postback AJAX; devuelve HTML, no el PDF). Ver
-> `phase8/REPORT.md`. El discovery, la extracción, la persistencia, el mirror y el
-> scheduler están completos y probados; el backfill masivo espera resolver la descarga.
+> **Pipeline completo y verificado end-to-end** (descarga en vivo → v2 → 8 tablas).
+> La descarga del portal MINVU funciona (el servidor mal-etiqueta el PDF como
+> `text/html` y le añade HTML tras el `%%EOF`; se detecta por magic bytes y se recorta).
+> Algunos informes fallan legítimamente en el portal → quedan `failed` y se reintentan
+> con `cev retry-failed`. Reutilizar PDFs de Google Drive queda como mejora futura.
 
 ## Inicio rápido (local)
 

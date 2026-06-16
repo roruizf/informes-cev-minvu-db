@@ -97,6 +97,9 @@ class Evaluaciones(SQLModel, table=True):
     last_error: Optional[str] = None
     last_processed_at: Optional[datetime] = None
     synced_to_mirror_at: Optional[datetime] = Field(default=None, index=True)
+    # set on every discovery upsert; lets us detect reports that stop appearing
+    # in the portal (no policy applied yet — just observability).
+    last_seen_at: Optional[datetime] = Field(default=None, index=True)
 
     comuna: Comunas = Relationship(back_populates="evaluaciones")
     pagina1: Optional["InformeV2Pagina1"] = Relationship(back_populates="evaluacion")

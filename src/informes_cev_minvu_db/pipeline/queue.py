@@ -81,6 +81,37 @@ def _mark_failed(eval_id: str, reason: str) -> None:
             s.add(ev); s.commit()
 
 
+def retry_failed(region_id: int | None = None, max_retries: int | None = None,
+                 limit: int | None = None) -> dict:
+    """Reactivate 'failed' evaluations with retry_count < max_retries → 'pending',
+    then drain. Those at/over max_retries stay failed (no infinite loop).
+
+    Some MINVU downloads fail portal-side (expected); this is the on-demand path to
+    re-attempt transient failures (portal down, etc.).
+    """
+    cap = settings.max_retries if max_retries is None else max_retries
+    with get_session() as s:
+        q = select(Evaluaciones).where(
+            Evaluaciones.pdf_download_status == "failed",
+            Evaluaciones.retry_count < cap,
+        )
+        if region_id is not None:
+            comuna_ids = [c.comuna_id for c in
+                          s.exec(select(Comunas).where(Comunas.region_id == region_id)).all()]
+            q = q.where(Evaluaciones.comuna_id.in_(comuna_ids))
+        if limit:
+            q = q.limit(limit)
+        evs = s.exec(q).all()
+        reactivated = len(evs)
+        for ev in evs:
+            ev.pdf_download_status = "pending"
+            s.add(ev)
+        s.commit()
+    logger.info("retry_failed: reactivated %s (max_retries=%s)", reactivated, cap)
+    drained = process_pending(region_id=region_id, limit=limit)
+    return {"reactivated": reactivated, "max_retries": cap, "drain": drained}
+
+
 def process_pending(region_id: int | None = None, limit: int | None = None) -> dict:
     """Drain pending evaluations (optionally scoped to a region). Returns a summary."""
     ids = _pending_eval_ids(region_id, limit)

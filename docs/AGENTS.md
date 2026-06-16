@@ -30,7 +30,7 @@ src/informes_cev_minvu_db/
 ├── pipeline/
 │   ├── persist.py       # escribe las 8 tablas de detalle (idempotente)
 │   ├── process.py       # process_pdf: detect→extract→validate→persist→status
-│   ├── queue.py         # process_pending: drena pending (download→process_pdf) [B1]
+│   ├── queue.py         # process_pending [B1] + retry_failed (reactiva failed<max_retries)
 │   ├── backfill.py      # backfill: discover región(es) + drena cola [B3]
 │   ├── daily.py         # job diario (drena pendientes + mirror + cleanup)
 │   └── cleanup.py       # PDFs huérfanos >N días
@@ -145,14 +145,13 @@ discover (portal) → evaluaciones[pending]
 
 ## Deuda técnica conocida
 
-- **BLOQUEANTE — descarga MINVU**: `download_from_minvu` devuelve HTML, no el PDF.
-  El botón `btnInforme2` es un postback AJAX (UpdatePanel/AjaxControlToolkit) del
-  portal actual; un POST completo re-renderiza la página de resultados. Pendiente:
-  reverse-engineering del AJAX-delta (cabecera `X-MicrosoftAjax: Delta=true`) o
-  habilitar reutilización de PDFs desde Google Drive. Ver `phase8/REPORT.md`.
-  `process_pdf` sobre un PDF local SÍ funciona end-to-end; B1/B3 están cableados y
-  probados, pero el backfill masivo espera resolver la descarga.
-- Reutilización de PDFs de Google Drive: NO implementada (tarea futura, diferida con I2).
+- **Descarga MINVU: RESUELTA (Fase 9).** El postback devuelve el PDF en el cuerpo
+  (`%PDF...`, `Content-Disposition: attachment`) pero mal-etiquetado `text/html` y con
+  HTML basura tras `%%EOF`. `_extract_pdf` lo detecta por magic bytes y recorta al
+  `%%EOF`. Verificado end-to-end (descarga en vivo → v2 → 8 tablas). Algunos informes
+  fallan portal-side (legítimo) → `failed`, reintenta con `cev retry-failed`.
+- Reutilización de PDFs de Google Drive (I2): diferida; NO necesaria (MINVU funciona).
 - I1 (optimización de viewstate): diferida.
+- `evaluaciones.last_seen_at`: seteada en cada discovery; sin política de "stale" aún.
 - OCR pág 6: confusiones ocasionales de 1 dígito (5↔6) y un caso de grid atípico (R12);
   las celdas dudosas se marcan `ocr_low_confidence=true`.
