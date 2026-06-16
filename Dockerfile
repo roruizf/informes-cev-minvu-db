@@ -1,8 +1,8 @@
 FROM python:3.12-slim
 
-# System deps: Tesseract (+Spanish), OpenCV runtime libs, PDF tooling
+# System deps: OpenCV runtime libs, PDF tooling. (No Tesseract — page-6 uses
+# template matching with OpenCV, not OCR text recognition.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        tesseract-ocr tesseract-ocr-spa \
         libgl1 libglib2.0-0 \
         poppler-utils qpdf \
     && rm -rf /var/lib/apt/lists/*

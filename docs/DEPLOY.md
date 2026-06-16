@@ -14,7 +14,8 @@ dentro del contenedor.
        `postgresql+psycopg://USER:PASS@HOST:PORT/DB`
        (Zeabur suele dar `postgresql://...`; añade `+psycopg`).
      - `NOCODEBACKEND_INSTANCE`, `NOCODEBACKEND_SECRET_KEY`, `NOCODEBACKEND_ACCESS_TOKEN`
-     - (opcional) `MINVU_BASE_URL`, `DOWNLOAD_CONCURRENCY`, `PDF_DIR`, `PDF_CLEANUP_DAYS`,
+     - (opcional) `MINVU_BASE_URL`, `DOWNLOAD_CONCURRENCY`, `DOWNLOAD_DELAY` (seg entre
+       descargas, default 1.5), `MAX_RETRIES` (default 3), `PDF_DIR`, `PDF_CLEANUP_DAYS`,
        `DAILY_SCRAPE_HOUR` (UTC, default 3).
    - Puerto: 8000 (el `Dockerfile` lo expone; Zeabur lo detecta).
 4. **Health check:** Zeabur puede sondear `GET /health` (200). El `Dockerfile` ya
@@ -28,9 +29,15 @@ dentro del contenedor.
 ## Operación
 
 - **Fase inicial (backfill ~156K):** comando one-shot desde la consola del servicio:
-  `cev discover --region N` (por región) y luego procesar la cola. NO es el job diario.
+  `cev backfill` (las 16 regiones) o `cev backfill --region N`. Descubre y drena la cola
+  (descarga + extracción). NO es el job diario. La descarga MINVU funciona (ver
+  `phase9/REPORT.md`); las descargas usan orden aleatorio y un delay de `DOWNLOAD_DELAY`
+  segundos entre PDFs para no saturar el portal. **Recomendado:** correr 1 región piloto
+  primero (`cev backfill --region 13`), medir, y luego escalar a las 16.
+- **Reintentos:** los informes que fallan en el portal quedan `failed`; reintenta los
+  transitorios con `cev retry-failed` (respeta `MAX_RETRIES`).
 - **Fase estable:** el scheduler embebido corre el job diario a `DAILY_SCRAPE_HOUR`:00 UTC
-  (mirror incremental + cleanup de PDFs huérfanos). Disparo manual: `POST /admin/run-daily`.
+  (drena pendientes + mirror incremental + cleanup). Disparo manual: `POST /admin/run-daily`.
 
 ## Endpoints
 - `GET /health` — proceso vivo.

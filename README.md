@@ -61,7 +61,15 @@ OpenCV + template matching (página 6) · APScheduler · Docker · deploy en Zea
 | 4b — Schema | Renames, tipos, 4 tablas de referencia + FK (18 tablas) |
 | 5 — Mirror | Sync incremental unidireccional a NoCodeBackend |
 | 6 — Deploy | Scheduler embebido + cleanup; deploy-ready Zeabur |
-| 7 — Refactor | Página 5 robustecida (extracción por font-size, sin hacks) |
+| 7 — Refactor | Página 5 robustecida (font-size); schema Capa 1 (15 tablas, texto crudo) |
+| 8 — Operación | daily loop procesa pendientes (B1); `cev backfill` (B3); tests (Q1) |
+| 9 — Descarga + retry | fix descarga MINVU (magic bytes %PDF + trim %%EOF); `cev retry-failed`; `last_seen_at` |
+
+> **Pipeline completo y verificado end-to-end** (descarga en vivo → v2 → 8 tablas).
+> La descarga del portal MINVU funciona (el servidor mal-etiqueta el PDF como
+> `text/html` y le añade HTML tras el `%%EOF`; se detecta por magic bytes y se recorta).
+> Algunos informes fallan legítimamente en el portal → quedan `failed` y se reintentan
+> con `cev retry-failed`. Reutilizar PDFs de Google Drive queda como mejora futura.
 
 ## Inicio rápido (local)
 

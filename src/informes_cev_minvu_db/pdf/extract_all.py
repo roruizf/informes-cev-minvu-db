@@ -31,16 +31,21 @@ def extract_report(pdf_path) -> dict:
         }
     finally:
         doc.close()
-    out["pagina6"] = _pagina6_rows(extract_page6(pdf_path))
+    codigo = (out.get("pagina1") or {}).get("codigo_evaluacion")
+    out["pagina6"] = _pagina6_rows(extract_page6(pdf_path), codigo)
     out["_validation"] = _validate(out)
     return out
 
 
 def _rows_from_listdict(d: dict) -> list[dict]:
-    """Convert {col: [v0,v1,...]} into [{col: v0}, {col: v1}, ...]."""
+    """Convert {col: [v0,v1,...]} into [{col: v0}, {col: v1}, ...].
+
+    Keeps codigo_evaluacion on every row (self-contained tables / controlled
+    redundancy); it arrives as a per-row list like [code, code, ...].
+    """
     if not d:
         return []
-    keys = [k for k in d if k != "codigo_evaluacion"]
+    keys = list(d)
     n = max((len(d[k]) for k in keys), default=0)
     rows = []
     for i in range(n):
@@ -53,8 +58,9 @@ def _pagina4_rows(d: dict) -> list[dict]:
     return rows
 
 
-def _pagina6_rows(months: dict) -> list[dict]:
-    """months = {mes: {exterior:[24], interior:[24], conf_*}} -> 24-hour rows per month."""
+def _pagina6_rows(months: dict, codigo: str | None = None) -> list[dict]:
+    """months = {mes: {exterior:[24], interior:[24], conf_*}} -> 24-hour rows per month.
+    codigo (from page 1) is carried on each row for self-contained tables."""
     rows = []
     for mes, band in months.items():
         ext = band.get("exterior", [None] * 24)
@@ -64,7 +70,7 @@ def _pagina6_rows(months: dict) -> list[dict]:
         for h in range(24):
             low_conf = (ext[h] is None or intr[h] is None
                         or (ce[h] >= 0 and ce[h] < 0.45) or (ci[h] >= 0 and ci[h] < 0.45))
-            rows.append({"mes": mes.capitalize(), "hora": h,
+            rows.append({"codigo_evaluacion": codigo, "mes": mes.capitalize(), "hora": h,
                          "temp_exterior": ext[h], "temp_interior": intr[h],
                          "ocr_low_confidence": bool(low_conf)})
     return rows

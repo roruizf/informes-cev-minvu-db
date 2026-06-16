@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # scraping concurrency
     download_concurrency: int = 8
     max_retries: int = 3
+    # polite delay (seconds) between PDF downloads during queue draining/backfill,
+    # to avoid hammering / rate-limiting the MINVU portal at ~156K scale.
+    download_delay: float = 1.5
 
     # PDF cleanup
     pdf_dir: str = "/tmp/cev_pdfs"

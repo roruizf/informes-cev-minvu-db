@@ -1,15 +1,13 @@
-"""Translate extractor output (legacy field names) to the new schema columns,
-resolve string dimensions to FK ids, and normalize types (dates).
+"""Translate extractor output (legacy field names) to the new schema columns
+and normalize types (dates, mes_id).
 
 The coordinate/OCR extractors are kept verbatim (they match the PDF layout);
-this layer maps their keys to the renamed columns and reference FKs.
+this layer maps their keys to the renamed columns. Layer-1 raw capture: free-text
+dimensions (tipo_vivienda, zona_termica, orientacion) are stored as `_nombre`
+strings directly — NO FK reference tables, NO get-or-create.
 """
 import re
 from datetime import date
-
-from sqlmodel import Session, select
-
-from informes_cev_minvu_db.db import models as M
 
 # ── value normalizers ───────────────────────────────────────────────────────
 
@@ -48,49 +46,27 @@ def mes_id(value) -> int | None:
     return _MESES.get(str(value).strip().lower())
 
 
-# ── FK resolution (get-or-create for open dimensions) ───────────────────────
-
-
-def _get_or_create(session: Session, model, name_attr, pk_attr, value):
-    if value is None or str(value).strip() == "":
-        return None
-    value = str(value).strip()
-    obj = session.exec(select(model).where(getattr(model, name_attr) == value)).first()
-    if obj:
-        return getattr(obj, pk_attr)
-    obj = model(**{name_attr: value})
-    session.add(obj)
-    session.flush()
-    return getattr(obj, pk_attr)
-
-
-def tipo_vivienda_id(session, value):
-    return _get_or_create(session, M.TiposVivienda, "tipo_vivienda_nombre", "tipo_vivienda_id", value)
-
-
-def zona_termica_id(session, value):
-    return _get_or_create(session, M.ZonasTermicas, "zona_termica_nombre", "zona_termica_id", value)
-
-
-def orientacion_id(session, value):
-    return _get_or_create(session, M.Orientaciones, "orientacion_nombre", "orientacion_id", value)
-
-
 # ── key renames per page (legacy extractor key -> new column) ───────────────
+# Layer-1: tipo_vivienda / zona_termica / orientacion map straight to *_nombre.
 
 PAGINA1_RENAME = {
+    "codigo_evaluacion": "codigo_evaluacion_energetica",
     "tipo_evaluacion": "tipo_evaluacion_nombre",
     "region": "region_nombre",
     "comuna": "comuna_nombre",
-    # tipo_vivienda handled separately (-> tipo_vivienda_id)
+    "tipo_vivienda": "tipo_vivienda_nombre",
 }
 PAGINA2_RENAME = {
+    "codigo_evaluacion": "codigo_evaluacion_energetica",
     "region": "region_nombre",
     "comuna": "comuna_nombre",
+    "tipo_vivienda": "tipo_vivienda_nombre",
+    "zona_termica": "zona_termica_nombre",
 }
 # page 3 consumos: per->porcentaje, proy->proyectado, ref->referencia, ep->energia_primaria,
 # generacion_ep->generacion_energia_primaria, total_consumo_ep->...energia_primaria...
 PAGINA3C_RENAME = {
+    "codigo_evaluacion": "codigo_evaluacion_energetica",
     "agua_caliente_sanitaria_per": "agua_caliente_sanitaria_porcentaje",
     "iluminacion_per": "iluminacion_porcentaje",
     "calefaccion_kwh_per": "calefaccion_porcentaje",
@@ -121,11 +97,18 @@ def rename_pagina3_consumos(data: dict) -> dict:
     return out
 
 
+# codigo_evaluacion -> codigo_evaluacion_energetica on every page
+CODIGO_RENAME = {"codigo_evaluacion": "codigo_evaluacion_energetica"}
+
 PAGINA4_RENAME = {
+    **CODIGO_RENAME,
     "demanda_calef_viv_eval_kwh": "demanda_calefaccion_viv_eval_kwh",
     "demanda_calef_viv_ref_kwh": "demanda_calefaccion_viv_ref_kwh",
     "demanda_enfri_viv_eval_kwh": "demanda_enfriamiento_viv_eval_kwh",
     "demanda_enfri_viv_ref_kwh": "demanda_enfriamiento_viv_ref_kwh",
 }
-PAGINA3E_RENAME = {"ua_phil": "ua_mas_phi_l"}
-PAGINA6_RENAME = {"temp_exterior": "temperatura_exterior", "temp_interior": "temperatura_interior"}
+PAGINA3E_RENAME = {**CODIGO_RENAME, "ua_phil": "ua_mas_phi_l", "orientacion": "orientacion_nombre"}
+PAGINA5_RENAME = {**CODIGO_RENAME}
+PAGINA6_RENAME = {**CODIGO_RENAME, "temp_exterior": "temperatura_exterior",
+                  "temp_interior": "temperatura_interior"}
+PAGINA7_RENAME = {**CODIGO_RENAME}
