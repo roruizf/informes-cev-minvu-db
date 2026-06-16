@@ -6,6 +6,7 @@ Idempotent: eval_id is deterministic, so re-runs update rather than duplicate.
 """
 import logging
 import time
+from datetime import datetime, timezone
 
 from sqlmodel import select
 
@@ -36,17 +37,19 @@ def sync_comunas(client: PortalClient, region_id: int) -> int:
 
 def _upsert_rows(rows: list[dict]) -> int:
     n = 0
+    now = datetime.now(timezone.utc)
     with get_session() as s:
         for row in rows:
             existing = s.get(Evaluaciones, row["eval_id"])
             if existing is None:
-                s.add(Evaluaciones(**row, pdf_download_status="pending"))
+                s.add(Evaluaciones(**row, pdf_download_status="pending", last_seen_at=now))
                 n += 1
             else:
                 # refresh the directory summary fields (keep pipeline state)
                 for k, v in row.items():
                     if k != "eval_id":
                         setattr(existing, k, v)
+                existing.last_seen_at = now  # stamp every time it appears in discovery
                 s.add(existing)
         s.commit()
     return n

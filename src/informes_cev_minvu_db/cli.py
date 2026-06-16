@@ -28,6 +28,10 @@ def main() -> None:
     pq = sub.add_parser("process-pending", help="drain the pending queue (download+extract)")
     pq.add_argument("--region", type=int, default=None)
     pq.add_argument("--limit", type=int, default=None)
+    rf = sub.add_parser("retry-failed", help="reactivate failed evals (retry_count<max) and drain")
+    rf.add_argument("--region", type=int, default=None)
+    rf.add_argument("--max-retries", type=int, default=None)
+    rf.add_argument("--limit", type=int, default=None)
     bf = sub.add_parser("backfill", help="discover a region (or all) + drain pending")
     bf.add_argument("--region", type=int, default=None, help="region id; omit for all 16")
     bf.add_argument("--tipo", type=int, choices=[1, 2], default=None)
@@ -75,6 +79,12 @@ def main() -> None:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         from informes_cev_minvu_db.pipeline.queue import process_pending
         print("process-pending:", process_pending(region_id=args.region, limit=args.limit))
+    if args.cmd == "retry-failed":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from informes_cev_minvu_db.pipeline.queue import retry_failed
+        print("retry-failed:", retry_failed(region_id=args.region,
+                                             max_retries=args.max_retries, limit=args.limit))
     if args.cmd == "backfill":
         import logging
         logging.basicConfig(level=logging.INFO, format="%(message)s")
