@@ -36,6 +36,13 @@ dentro del contenedor.
   primero (`cev backfill --region 13`), medir, y luego escalar a las 16.
 - **Reintentos:** los informes que fallan en el portal quedan `failed`; reintenta los
   transitorios con `cev retry-failed` (respeta `MAX_RETRIES`).
+- **Mirror NoCodeBackend — IMPORTANTE (una vez por instance):** crear las tablas con
+  `cev mirror-init` **desde una máquina donde el MCP funcione (ej. local)**. El MCP
+  (DDL/CREATE TABLE) falla desde Zeabur con "Could not determine user email for limit
+  check" (chequeo atado al contexto del datacenter), pero el REST (insertar datos)
+  funciona desde cualquier lado. Por eso `mirror-init` se corre una vez localmente y
+  luego `cev sync-mirror` en Zeabur solo usa REST (nunca MCP). Si una tabla falta, el
+  sync reporta error por-tabla y NO marca los evals como sincronizados.
 - **Fase estable:** el scheduler embebido corre el job diario a `DAILY_SCRAPE_HOUR`:00 UTC
   (drena pendientes + mirror incremental + cleanup). Disparo manual: `POST /admin/run-daily`.
 

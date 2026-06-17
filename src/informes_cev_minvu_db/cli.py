@@ -20,6 +20,7 @@ def main() -> None:
     pp.add_argument("--eval-id", required=True)
     pp.add_argument("--path", required=True)
     pp.add_argument("--ensure-eval", action="store_true", help="insert a stub eval row if missing")
+    sub.add_parser("mirror-init", help="create all NoCodeBackend tables via MCP (run once, where MCP works)")
     sm = sub.add_parser("sync-mirror", help="push data to NoCodeBackend (incremental)")
     sm.add_argument("--limit", type=int, default=None)
     sm.add_argument("--full", action="store_true", help="re-sync all (ignore synced flag)")
@@ -66,6 +67,11 @@ def main() -> None:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         from informes_cev_minvu_db.mirror.sync import run_sync
         print("sync result:", run_sync(limit=args.limit, full=args.full))
+    if args.cmd == "mirror-init":
+        import logging
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        from informes_cev_minvu_db.mirror.sync import mirror_init
+        print("mirror-init:", mirror_init())
     if args.cmd == "cleanup":
         from informes_cev_minvu_db.pipeline.cleanup import cleanup_orphans
         print("cleanup:", cleanup_orphans())
