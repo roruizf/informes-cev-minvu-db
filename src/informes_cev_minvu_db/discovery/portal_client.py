@@ -5,11 +5,19 @@ postback that repopulates the comuna dropdown; the search button is
 `BtnConsultarbusq`; results paginate via __doPostBack(grid, 'Page$N') at 10/page.
 Two result grids: grdViviendasPre (tipo 1) / grdViviendasCal (tipo 2).
 """
+import logging
 import re
+import time
 
 import httpx
 
 from informes_cev_minvu_db.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Transient network errors from the portal (drops/SSL EOF/rate-limit blips).
+_TRANSIENT = (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError,
+              httpx.ReadTimeout, httpx.ConnectTimeout)
 
 PATH = "/Publico/BusquedaVivienda.aspx"
 TOOLKIT = (";;AjaxControlToolkit, Version=4.1.60501.0, Culture=neutral, "
@@ -32,6 +40,22 @@ class PortalClient:
         )
         self._vs = ""
         self._vsg = ""
+        self._net_retries = 4
+
+    def _request(self, method: str, **kw) -> httpx.Response:
+        """GET/POST with backoff on transient network errors (SSL EOF, drops,
+        rate-limit blips). Raises the last error after _net_retries attempts."""
+        last = None
+        for attempt in range(self._net_retries):
+            try:
+                return self._client.request(method, self.url, **kw)
+            except _TRANSIENT as e:
+                last = e
+                wait = 3 * (attempt + 1)
+                logger.warning("portal %s transient error (try %d/%d): %s; sleep %ds",
+                               method, attempt + 1, self._net_retries, str(e)[:60], wait)
+                time.sleep(wait)
+        raise RuntimeError(f"portal {method} failed after {self._net_retries} retries: {last}")
 
     def close(self):
         self._client.close()
@@ -57,7 +81,7 @@ class PortalClient:
         }
 
     def load(self) -> str:
-        r = self._client.get(self.url)
+        r = self._request("GET")
         r.raise_for_status()
         self._vs = _hidden("__VIEWSTATE", r.text)
         self._vsg = _hidden("__VIEWSTATEGENERATOR", r.text)
@@ -70,7 +94,7 @@ class PortalClient:
              "ctl00$ContentPlaceHolder1$dbRegion": str(region_id),
              "ctl00$ContentPlaceHolder1$dbComuna": "-1",
              "ctl00$ContentPlaceHolder1$dbCertificacion": "-1"}
-        r = self._client.post(self.url, data=f)
+        r = self._request("POST", data=f)
         r.raise_for_status()
         self._vs = _hidden("__VIEWSTATE", r.text)
         return r.text
@@ -82,7 +106,7 @@ class PortalClient:
              "ctl00$ContentPlaceHolder1$dbComuna": str(comuna_id),
              "ctl00$ContentPlaceHolder1$dbCertificacion": str(tipo),
              "ctl00$ContentPlaceHolder1$BtnConsultarbusq": "Consultar"}
-        r = self._client.post(self.url, data=f)
+        r = self._request("POST", data=f)
         r.raise_for_status()
         self._vs = _hidden("__VIEWSTATE", r.text)
         return r.text
@@ -96,7 +120,7 @@ class PortalClient:
              "ctl00$ContentPlaceHolder1$dbRegion": str(region_id),
              "ctl00$ContentPlaceHolder1$dbComuna": str(comuna_id),
              "ctl00$ContentPlaceHolder1$dbCertificacion": str(tipo)}
-        r = self._client.post(self.url, data=f)
+        r = self._request("POST", data=f)
         r.raise_for_status()
         self._vs = _hidden("__VIEWSTATE", r.text)
         return r.text
