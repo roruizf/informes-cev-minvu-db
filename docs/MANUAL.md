@@ -30,7 +30,8 @@ Se ejecutan dentro del contenedor: `docker compose exec app cev <comando>`.
 | `cev init` | Crea las tablas + carga datos de referencia (regiones, meses, etc.) |
 | `cev discover --region N [--comuna C] [--tipo 1\|2] [--max-pages K]` | Descubre informes del portal → tabla `evaluaciones` |
 | `cev process-pdf --eval-id X --path archivo.pdf [--ensure-eval]` | Procesa un PDF concreto → 8 tablas de detalle |
-| `cev sync-mirror [--limit N] [--full]` | Empuja datos a NoCodeBackend (incremental) |
+| `cev mirror-init` | Crea las tablas en NoCodeBackend (una vez por instance, **desde local** — el MCP falla en Zeabur) |
+| `cev sync-mirror [--limit N] [--full]` | Empuja datos a NoCodeBackend (incremental, solo REST) |
 | `cev process-pending [--region N] [--limit K]` | Drena la cola: descarga + extrae los `pending` |
 | `cev retry-failed [--region N] [--max-retries 3] [--limit K]` | Reactiva los `failed` con reintentos disponibles y los drena |
 | `cev backfill [--region N] [--discover-only] [--max-pages K] [--process-limit K]` | Descubre una región (o las 16) y drena la cola |

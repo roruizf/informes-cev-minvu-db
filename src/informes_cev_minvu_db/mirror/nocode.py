@@ -110,6 +110,27 @@ class NocodeMirror:
             logger.warning("ensure_table %s failed: %s", table, e)
             return f"error: {str(e)[:120]}"
 
+    def create_tables(self, datasets: dict[str, list[dict]]) -> dict:
+        """Create every mirror table via MCP DDL (one-shot bootstrap).
+
+        Run once from an environment where the MCP works (e.g. local). The Zeabur
+        runtime then only needs REST upsert — it never calls MCP. `datasets` maps
+        table name → sample rows used to infer the column types.
+        """
+        if not self.access_token:
+            return {"error": "no access token (NOCODEBACKEND_ACCESS_TOKEN)"}
+        summary: dict = {}
+        for table, rows in datasets.items():
+            if not rows:
+                summary[table] = "skip: no sample rows"
+                continue
+            try:
+                self._mcp_execute_sql(_infer_ddl(table, rows))
+                summary[table] = "created"
+            except Exception as e:  # noqa: BLE001
+                summary[table] = f"error: {str(e)[:150]}"
+        return summary
+
     # ── REST CRUD ───────────────────────────────────────────────────────────
 
     def _req(self, method: str, path: str, json_body=None):
@@ -143,16 +164,26 @@ class NocodeMirror:
 
         `key` is the business key (e.g. eval_id). Rows must include it. The mirror's
         own `id` is never sent on create/update.
+
+        Tolerant: if the table doesn't exist (REST 500) the FIRST create fails and we
+        return an error marker instead of raising — one missing table must not abort the
+        whole sync. Run `cev mirror-init` once to create tables (DDL via MCP).
         """
         created = updated = 0
         for row in rows:
             payload = {k: v for k, v in row.items() if k != "id"}
             kv = payload.get(key)
-            existing = self.search(table, {key: kv}) if kv is not None else []
-            if existing and existing[0].get("id") is not None:
-                self._update(table, existing[0]["id"], payload)
-                updated += 1
-            else:
-                self._create(table, payload)
-                created += 1
+            try:
+                existing = self.search(table, {key: kv}) if kv is not None else []
+                if existing and existing[0].get("id") is not None:
+                    self._update(table, existing[0]["id"], payload)
+                    updated += 1
+                else:
+                    self._create(table, payload)
+                    created += 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning("upsert %s failed (table missing? run mirror-init): %s",
+                               table, str(e)[:150])
+                return {"created": created, "updated": updated,
+                        "error": str(e)[:150], "remaining": len(rows) - created - updated}
         return {"created": created, "updated": updated}
