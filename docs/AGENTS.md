@@ -8,17 +8,18 @@ código o consuman los datos vía NoCodeBackend.
 ```text
 src/informes_cev_minvu_db/
 ├── config.py            # Settings (pydantic-settings, lee .env)
-├── app.py               # FastAPI + health checks + scheduler lifespan
+├── app.py               # FastAPI + health + admin (run-backfill/status, gate token)
+├── admin_tasks.py       # runner de backfill en background + STATE (Fase 13)
 ├── scheduler.py         # APScheduler embebido (job diario 03:00 UTC)
-├── cli.py               # cev init|discover|process-pdf|sync-mirror|daily|cleanup
+├── cli.py               # cev init|discover|process-pdf|sync-mirror|daily|cleanup|backfill
 ├── db/
-│   ├── models.py        # 15 tablas SQLModel
-│   ├── session.py       # engine + get_session()
+│   ├── models.py        # 16 tablas SQLModel
+│   ├── session.py       # engine + get_session() con retry/backoff de conexión (Fase 13)
 │   └── seed.py          # regiones, tipos_evaluacion, meses
 ├── discovery/
 │   ├── portal_client.py # cliente ASP.NET (httpx + VIEWSTATE)
 │   ├── html_parser.py   # XPaths + eval_id determinista
-│   └── run.py           # orquestador discover()
+│   └── run.py           # orquestador discover() — paralelo + checkpoint/early-stop (Fase 13)
 ├── pdf/
 │   ├── coordinates.py   # get_page_coordinates(n) en mm (215.9×330.0)
 │   ├── extractor.py     # págs 1-5,7 por coordenadas
@@ -39,7 +40,7 @@ src/informes_cev_minvu_db/
     └── sync.py          # orquestador run_sync()
 ```
 
-## Schema de BD (15 tablas)
+## Schema de BD (16 tablas)
 
 **Filosofía Capa 1:** capturar el valor crudo del PDF. Las dimensiones de texto
 libre / fijas (tipo_vivienda, zona_termica, orientacion, tipo_evaluacion en pág1)
@@ -48,7 +49,7 @@ limpieza/normalización es una Capa 2 futura).
 
 **Referencia (dimensionales, solo estructurales):** `regiones`, `comunas`,
 `tipos_evaluacion`, `meses`.
-**Mecánica de scraping (NO se espejan):** `busquedas`, `paginas_html`.
+**Mecánica de scraping (NO se espejan):** `busquedas`, `paginas_html`, `discovery_progress`.
 **Directorio + datos:** `evaluaciones` + `informe_v2_pagina1..7`.
 
 (Tipos: VARCHAR=texto, FLOAT=real, INTEGER=entero, DATE/DATETIME, BOOLEAN.)
@@ -56,8 +57,13 @@ limpieza/normalización es una Capa 2 futura).
 ### evaluaciones (directorio: universo total + estado del pipeline)
 eval_id:VARCHAR PK, comuna_id FK, tipo_evaluacion_id FK, identificacion_vivienda,
 tipologia, proyecto, calificacion_energetica_letra, calificacion_equipos_letra,
-codigo_informe, codigo_etiqueta, pdf_download_status, report_version, retry_count,
-last_error, last_processed_at, synced_to_mirror_at.
+codigo_informe, codigo_etiqueta, viewstate, pdf_download_status, report_version, retry_count,
+last_error, last_processed_at, synced_to_mirror_at, last_seen_at.
+
+### discovery_progress (checkpoint de discovery, Fase 13 — NO se espeja)
+PK compuesta (comuna_id, tipo_evaluacion_id), region_id, status('pending'|'done'),
+pages_done, total_pages, rows_new, rows_seen, early_stopped:BOOLEAN, last_error, updated_at.
+Permite `--resume` (retomar sin re-paginar) y registrar el early-stop incremental.
 
 ### informe_v2_pagina1 (etiqueta)
 eval_id PK FK, codigo_evaluacion_energetica, tipo_evaluacion_nombre, region_nombre, comuna_nombre,
@@ -133,7 +139,7 @@ evaluador_rol_minvu.
 ## Pipeline end-to-end
 
 ```text
-discover (portal) → evaluaciones[pending]
+discover (portal, paralelo por comuna/tipo + checkpoint) → evaluaciones[pending]
   → downloader (Drive gws / MINVU)
   → version_detect (v1 skip / v2)
   → extract_all (extractor coords págs 1-5,7 + ocr_page6 pág 6)
@@ -142,6 +148,27 @@ discover (portal) → evaluaciones[pending]
   → mirror/sync (incremental) → NoCodeBackend → evaluaciones.synced_to_mirror_at
   → delete PDF local
 ```
+
+## Resiliencia y operación (Fase 13)
+
+- **Reconexión BD:** `get_session()` reintenta la *conexión* con backoff exponencial
+  (`DB_CONNECT_RETRIES`/`DB_CONNECT_BACKOFF`) ante errores transitorios (Zeabur Postgres
+  en "recovery mode"). `pool_pre_ping` recicla conexiones muertas del pool; esto agrega
+  recuperación cuando el servidor está brevemente inalcanzable.
+- **Discovery paralelo:** `discover()` reparte las unidades **(comuna, tipo)** en un
+  `ThreadPoolExecutor` (`DISCOVERY_CONCURRENCY`), cada una con su **propio `PortalClient`**
+  (sesión httpx + VIEWSTATE independientes). Las **páginas dentro de una comuna siguen
+  secuenciales** porque el portal es VIEWSTATE-stateful (`goto_page` depende de la
+  respuesta previa). La descarga de PDFs permanece serial+throttled.
+- **Checkpoint + incremental:** `discovery_progress` (una fila por comuna/tipo). `resume=True`
+  salta unidades `done` y retoma parciales desde `pages_done+1`. `incremental=True` corta
+  una unidad tras 2 páginas consecutivas con 0 informes nuevos (asume orden newest-first
+  del portal; en duda, correr sin el flag). La reanudación de descarga es implícita vía
+  `pdf_download_status`.
+- **Endpoints admin:** `POST /admin/run-backfill` (background, sin nohup) + `GET
+  /admin/backfill-status`. Lock anti-solapamiento (un 2º POST devuelve 409). Gate de
+  token compartido `CEV_ADMIN_TOKEN` vía header `X-Admin-Token`, aplicado a todos los
+  `/admin/*` (incl. `run-daily`); vacío = abierto. Runner en `admin_tasks.py`.
 
 ## Deuda técnica conocida
 

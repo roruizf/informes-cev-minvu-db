@@ -16,6 +16,10 @@ def main() -> None:
     d.add_argument("--comuna", type=int, default=None, help="single comuna id (optional)")
     d.add_argument("--tipo", type=int, choices=[1, 2], default=None, help="1, 2, or both")
     d.add_argument("--max-pages", type=int, default=None, help="cap result pages (testing)")
+    d.add_argument("--incremental", action="store_true",
+                   help="early-stop each comuna once a page yields 0 new rows")
+    d.add_argument("--resume", action="store_true",
+                   help="skip discovery units already 'done' (crash recovery)")
     pp = sub.add_parser("process-pdf", help="process one local PDF end-to-end")
     pp.add_argument("--eval-id", required=True)
     pp.add_argument("--path", required=True)
@@ -39,6 +43,10 @@ def main() -> None:
     bf.add_argument("--discover-only", action="store_true")
     bf.add_argument("--max-pages", type=int, default=None)
     bf.add_argument("--process-limit", type=int, default=None)
+    bf.add_argument("--incremental", action="store_true",
+                    help="early-stop each comuna once a page yields 0 new rows")
+    bf.add_argument("--resume", action="store_true",
+                    help="skip discovery units already 'done' (crash recovery)")
     args = p.parse_args()
 
     if args.cmd in ("init-db", "init"):
@@ -51,7 +59,9 @@ def main() -> None:
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         from informes_cev_minvu_db.discovery.run import discover
         tipos = (args.tipo,) if args.tipo else (1, 2)
-        res = discover(args.region, comuna_id=args.comuna, tipos=tipos, max_pages=args.max_pages)
+        res = discover(args.region, comuna_id=args.comuna, tipos=tipos,
+                       max_pages=args.max_pages, incremental=args.incremental,
+                       resume=args.resume)
         print("discovery summary:", res)
     if args.cmd == "process-pdf":
         import logging
@@ -98,7 +108,8 @@ def main() -> None:
         tipos = (args.tipo,) if args.tipo else (1, 2)
         print("backfill:", backfill(region_id=args.region, tipos=tipos,
                                      discover_only=args.discover_only,
-                                     max_pages=args.max_pages, process_limit=args.process_limit))
+                                     max_pages=args.max_pages, process_limit=args.process_limit,
+                                     incremental=args.incremental, resume=args.resume))
 
 
 if __name__ == "__main__":
