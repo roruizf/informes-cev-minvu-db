@@ -54,7 +54,7 @@ def download_from_minvu(eval_row, dest: Path, region_id: int, comuna_id: int,
              "ctl00$ContentPlaceHolder1$dbComuna": str(comuna_id),
              "ctl00$ContentPlaceHolder1$dbCertificacion": str(tipo),
              f"{target}.x": "7", f"{target}.y": "7"}
-        r = client._client.post(client.url, data=f)
+        r = client._request("POST", data=f)
         if r.status_code != 200:
             logger.warning("minvu download: HTTP %s", r.status_code)
             return False
