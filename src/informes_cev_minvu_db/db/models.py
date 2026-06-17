@@ -78,7 +78,6 @@ class Evaluaciones(SQLModel, table=True):
     eval_id = uuid5(NAMESPACE_DNS, f"{comuna_id}_{region_id}_{tipo_evaluacion_id}_{identificacion}")
     """
     eval_id: str = Field(primary_key=True)
-    search_id_descubrimiento: Optional[str] = Field(default=None, index=True)
     comuna_id: int = Field(foreign_key="comunas.comuna_id", index=True)
     tipo_evaluacion_id: int = Field(foreign_key="tipos_evaluacion.tipo_evaluacion_id")
 

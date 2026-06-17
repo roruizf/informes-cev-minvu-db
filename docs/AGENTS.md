@@ -151,7 +151,13 @@ discover (portal) → evaluaciones[pending]
   `%%EOF`. Verificado end-to-end (descarga en vivo → v2 → 8 tablas). Algunos informes
   fallan portal-side (legítimo) → `failed`, reintenta con `cev retry-failed`.
 - Reutilización de PDFs de Google Drive (I2): diferida; NO necesaria (MINVU funciona).
-- I1 (optimización de viewstate): diferida.
+- I1 (optimización de viewstate por comuna): DIFERIDA — reusar 1 search/viewstate para
+  varios PDFs de la misma comuna (en vez de 4 requests/PDF) bajaría a ~3-5 s/PDF. Requiere
+  verificación en vivo (no shippear sin probar; el portal rate-limita).
+- Rate-limiting del portal MINVU es REAL (bloquea la IP tras muchos requests). Mitigado con
+  `DOWNLOAD_DELAY`, orden aleatorio y retry/backoff en `PortalClient._request`.
+- `evaluaciones.search_id_descubrimiento` ELIMINADA (Fase 12, columna muerta). En un Postgres
+  ya creado, opcional: `ALTER TABLE evaluaciones DROP COLUMN search_id_descubrimiento;`
 - `evaluaciones.last_seen_at`: seteada en cada discovery; sin política de "stale" aún.
 - OCR pág 6: confusiones ocasionales de 1 dígito (5↔6) y un caso de grid atípico (R12);
   las celdas dudosas se marcan `ocr_low_confidence=true`.
