@@ -34,7 +34,7 @@ PostgreSQL y los espeja (una vía) en NoCodeBackend para consumo por agentes de 
                     │  pipeline/persist → PostgreSQL 16 (18 tablas)  ◀── verdad    │
                     │       │                                                      │
                     │  mirror/sync (incremental, upsert por eval_id)               │
-                    │  FastAPI: /health · /health/db · /health/last-scrape         │
+                    │  FastAPI: /health(/db,/last-scrape) · /admin/run-backfill   │
                     │  APScheduler: job diario 03:00 UTC                           │
                     └──────────────────────────┬──────────────────────────────────┘
                                                │ (una vía, incremental)
@@ -64,6 +64,7 @@ OpenCV + template matching (página 6) · APScheduler · Docker · deploy en Zea
 | 7 — Refactor | Página 5 robustecida (font-size); schema Capa 1 (15 tablas, texto crudo) |
 | 8 — Operación | daily loop procesa pendientes (B1); `cev backfill` (B3); tests (Q1) |
 | 9 — Descarga + retry | fix descarga MINVU (magic bytes %PDF + trim %%EOF); `cev retry-failed`; `last_seen_at` |
+| 13 — Resiliencia | reconexión BD (retry/backoff); discovery paralelo; checkpoint/`--incremental`/`--resume`; endpoints `/admin/run-backfill` + `/admin/backfill-status` (token) |
 
 > **Pipeline completo y verificado end-to-end** (descarga en vivo → v2 → 8 tablas).
 > La descarga del portal MINVU funciona (el servidor mal-etiqueta el PDF como

@@ -13,6 +13,9 @@ class Settings(BaseSettings):
 
     # scraping concurrency
     download_concurrency: int = 8
+    # parallel discovery: number of (comuna, tipo) units scraped concurrently, each
+    # with its own PortalClient. Pages WITHIN a comuna stay sequential (VIEWSTATE).
+    discovery_concurrency: int = 8
     max_retries: int = 3
     # polite delay (seconds) between PDF downloads during queue draining/backfill,
     # to avoid hammering / rate-limiting the MINVU portal at ~156K scale.
@@ -30,6 +33,15 @@ class Settings(BaseSettings):
 
     # scheduler
     daily_scrape_hour: int = 3
+
+    # DB connect resilience (Fase 13): retry the connection on transient outages
+    # (Zeabur Postgres restart / "system is in recovery mode") with expo backoff.
+    db_connect_retries: int = 6
+    db_connect_backoff: float = 2.0  # seconds; doubles each attempt (2,4,8,16,32,64)
+
+    # admin endpoints: shared-secret token gate for /admin/* (empty = open, but a
+    # value is strongly recommended in prod since the Zeabur URL is public).
+    admin_token: str = ""
 
 
 settings = Settings()

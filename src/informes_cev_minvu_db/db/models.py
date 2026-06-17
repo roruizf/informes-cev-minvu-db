@@ -69,6 +69,30 @@ class PaginasHTML(SQLModel, table=True):
     viewstate: Optional[str] = None
 
 
+class DiscoveryProgress(SQLModel, table=True):
+    """Per-(comuna, tipo) discovery checkpoint (Fase 13).
+
+    Lets a crashed backfill resume without re-paginating completed units, and lets
+    incremental runs skip units already covered. One row per (comuna_id, tipo).
+    status: 'pending' | 'done'. `pages_done`/`rows_new` are for observability and
+    to support resuming a partially-paginated unit. `early_stopped` records that we
+    stopped because a page yielded 0 new rows (incremental fast-path).
+    """
+    __tablename__ = "discovery_progress"
+    comuna_id: int = Field(foreign_key="comunas.comuna_id", primary_key=True)
+    tipo_evaluacion_id: int = Field(
+        foreign_key="tipos_evaluacion.tipo_evaluacion_id", primary_key=True)
+    region_id: int = Field(index=True)
+    status: str = Field(default="pending", index=True)
+    pages_done: int = Field(default=0)
+    total_pages: Optional[int] = None
+    rows_new: int = Field(default=0)
+    rows_seen: int = Field(default=0)
+    early_stopped: bool = Field(default=False)
+    last_error: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
 # ── Master directory table ──────────────────────────────────────────────────
 
 
