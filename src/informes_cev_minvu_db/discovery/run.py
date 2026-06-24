@@ -11,10 +11,14 @@ Fase 13 (resilience refactor):
   * CHECKPOINT — DiscoveryProgress holds one row per (comuna, tipo). A crashed run
     resumes skipping units already 'done'; a partially-paginated unit resumes from
     pages_done+1.
-  * EARLY-STOP (incremental) — when a full page yields 0 new rows, stop paginating
-    that unit. The portal lists newest-first, so once we hit all-known rows the rest
-    of the pages are old. This is what makes "search only what's new" fast instead
-    of re-paginating ~90% of pages.
+  * EARLY-STOP (incremental) — the portal lists OLDEST-first (txtCampo=0/txtOrden=0,
+    verified by the product owner), so new evaluations land on the LAST pages. In
+    incremental mode we therefore paginate in REVERSE (last page first); once we hit
+    `early_stop_grace` consecutive all-known pages we stop, because everything older
+    (lower page numbers) is already in the DB. This is what makes "search only what's
+    new" fast instead of re-paginating ~90% of pages. NOTE: early-stop assumes the
+    unit was fully scraped in a prior run; a unit that never completed can have gaps
+    in its middle pages, which a periodic FULL run (incremental=False) heals.
 """
 import logging
 import time
@@ -94,14 +98,16 @@ def discover_comuna(client: PortalClient, region_id: int, comuna_id: int, tipo: 
                     early_stop_grace: int = 2) -> dict:
     """Discover all evaluations for one (region, comuna, tipo). Returns summary.
 
-    incremental: stop paginating after `early_stop_grace` CONSECUTIVE pages yield 0
-        new rows. ASSUMPTION: the portal lists newest-first, so a run of all-known
-        rows means the remaining pages are older/known. The grace window (default 2
-        pages) tolerates an isolated all-known page interleaved with new ones; if the
-        portal's default sort is ever NOT date-descending, run without incremental
-        (full re-paginate) — it stays correct, just slower. The default sort params
-        are txtCampo=0 / txtOrden=0 in PortalClient.
-    resume_from_page: skip pages already scraped in a prior (crashed) run.
+    incremental: paginate in REVERSE (last page first) and stop after
+        `early_stop_grace` CONSECUTIVE pages yield 0 new rows. The portal lists
+        OLDEST-first, so new evaluations are on the LAST pages; once we hit a run of
+        all-known rows the remaining (lower-numbered) pages are older/known. The grace
+        window (default 2 pages) tolerates an isolated all-known page interleaved with
+        new ones. The default sort params are txtCampo=0 / txtOrden=0 in PortalClient.
+    resume_from_page: skip pages already scraped in a prior (crashed) FULL run. Only
+        applies to forward (non-incremental) pagination; in incremental reverse mode it
+        is ignored — a reverse run always restarts from the last page (cheap, early-stop
+        kicks in fast) and a crashed incremental run simply re-runs.
     Updates DiscoveryProgress as it goes so a crash mid-unit can resume.
     """
     page = client.search(region_id, comuna_id, tipo)
@@ -115,9 +121,14 @@ def discover_comuna(client: PortalClient, region_id: int, comuna_id: int, tipo: 
     zero_streak = 0
     start = max(1, resume_from_page)
 
-    for p in range(1, pages + 1):
-        if p < start:
-            continue  # already done in a prior run
+    # Incremental: walk last→first so new evals (oldest-first portal) come first and
+    # early-stop can short-circuit. Full: walk first→last, honouring resume_from_page.
+    page_range = reversed(range(1, pages + 1)) if incremental else range(1, pages + 1)
+    pages_done = 0
+
+    for p in page_range:
+        if not incremental and p < start:
+            continue  # already done in a prior (crashed) full run
         if p > 1:
             page = client.goto_page(region_id, comuna_id, tipo, p)
             time.sleep(delay)
@@ -125,8 +136,12 @@ def discover_comuna(client: PortalClient, region_id: int, comuna_id: int, tipo: 
         seen += len(rows)
         page_new = _upsert_rows(rows)
         new_rows += page_new
+        pages_done += 1
+        # In forward mode pages_done == p (contiguous from 1), so resume picks up at
+        # p+1. In reverse (incremental) mode it is just a count of pages processed.
+        progress_page = p if not incremental else pages_done
         _save_progress(region_id, comuna_id, tipo, status="pending",
-                       pages_done=p, total_pages=pages, rows_new=new_rows,
+                       pages_done=progress_page, total_pages=pages, rows_new=new_rows,
                        rows_seen=seen, early_stopped=False, last_error=None)
         if incremental and rows:
             zero_streak = zero_streak + 1 if page_new == 0 else 0

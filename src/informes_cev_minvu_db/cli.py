@@ -29,6 +29,7 @@ def main() -> None:
     sm.add_argument("--limit", type=int, default=None)
     sm.add_argument("--full", action="store_true", help="re-sync all (ignore synced flag)")
     sub.add_parser("cleanup", help="remove orphan local PDFs older than N days")
+    sub.add_parser("diagnostic", help="read-only DB health snapshot as JSON")
     sub.add_parser("daily", help="run the daily incremental job once")
     pq = sub.add_parser("process-pending", help="drain the pending queue (download+extract)")
     pq.add_argument("--region", type=int, default=None)
@@ -85,6 +86,14 @@ def main() -> None:
     if args.cmd == "cleanup":
         from informes_cev_minvu_db.pipeline.cleanup import cleanup_orphans
         print("cleanup:", cleanup_orphans())
+    if args.cmd == "diagnostic":
+        import json
+        from informes_cev_minvu_db.diagnostic import diagnostic
+        # pure JSON to stdout (parseable by remote/agent callers); errors as JSON too
+        try:
+            print(json.dumps(diagnostic(), default=str))
+        except Exception as e:  # noqa: BLE001
+            print(json.dumps({"ok": False, "error": str(e)[:200]}))
     if args.cmd == "daily":
         import logging
         logging.basicConfig(level=logging.INFO, format="%(message)s")

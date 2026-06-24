@@ -11,6 +11,7 @@ from sqlmodel import func, select
 from informes_cev_minvu_db.config import settings
 from informes_cev_minvu_db.db.models import DiscoveryProgress, Evaluaciones
 from informes_cev_minvu_db.db.session import get_session
+from informes_cev_minvu_db.diagnostic import diagnostic
 from informes_cev_minvu_db import admin_tasks, scheduler
 
 
@@ -148,3 +149,16 @@ def admin_backfill_status(x_admin_token: str | None = Header(default=None)):
     except Exception as e:  # noqa: BLE001
         out["db_error"] = str(e)[:200]
     return out
+
+
+@app.get("/admin/db-diagnostic")
+def admin_db_diagnostic(x_admin_token: str | None = Header(default=None)):
+    """Read-only DB health snapshot (fixed queries, JSON). For external agents:
+    status/version distribution, detail-table counts, mirror lag, discovery progress,
+    página-1 NULL counts. No DATABASE_URL/credentials are returned."""
+    _require_admin(x_admin_token)
+    try:
+        return diagnostic()
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=503,
+                            content={"ok": False, "error": str(e)[:200]})

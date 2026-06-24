@@ -31,6 +31,24 @@ def _rename(d: dict, mapping: dict) -> dict:
     return out
 
 
+# Critical columns we expect a valid v2 page to carry. Layer-1 policy: a NULL here
+# does not block persistence (we still capture the raw row), but it is logged so a
+# silent extractor regression on a structurally-valid PDF is visible in the logs.
+_CRITICAL = {
+    "pagina1": ("codigo_evaluacion_energetica", "superficie_interior_util_m2",
+                "emitida_el", "demanda_calefaccion_kwh_m2_ano",
+                "demanda_enfriamiento_kwh_m2_ano"),
+    "pagina2": ("demanda_calefaccion_kwh_m2_ano", "demanda_enfriamiento_kwh_m2_ano"),
+}
+
+
+def _warn_missing(eval_id: str, page: str, data: dict) -> None:
+    missing = [c for c in _CRITICAL.get(page, ()) if data.get(c) is None]
+    if missing:
+        logger.warning("eval %s %s: critical fields NULL after extract: %s",
+                       eval_id, page, ", ".join(missing))
+
+
 def persist_report(session: Session, eval_id: str, report: dict) -> dict:
     counts: dict = {}
 
@@ -39,13 +57,16 @@ def persist_report(session: Session, eval_id: str, report: dict) -> dict:
     if p1:
         p1 = _rename(p1, N.PAGINA1_RENAME)
         p1["emitida_el"] = N.parse_chilean_date(p1.get("emitida_el"))
+        _warn_missing(eval_id, "pagina1", p1)
         _replace_single(session, M.InformeV2Pagina1, eval_id, p1)
         counts["pagina1"] = 1
 
     # ── page 2 ──
     p2 = report.get("pagina2") or {}
     if p2:
-        _replace_single(session, M.InformeV2Pagina2, eval_id, _rename(p2, N.PAGINA2_RENAME))
+        p2 = _rename(p2, N.PAGINA2_RENAME)
+        _warn_missing(eval_id, "pagina2", p2)
+        _replace_single(session, M.InformeV2Pagina2, eval_id, p2)
         counts["pagina2"] = 1
 
     # ── page 3 consumos ──

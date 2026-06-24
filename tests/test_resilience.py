@@ -160,6 +160,75 @@ def test_discover_comuna_resume_skips_done_pages(monkeypatch):
     assert res["rows_seen"] == 1
 
 
+def test_discover_comuna_incremental_paginates_in_reverse(monkeypatch):
+    """Incremental mode visits the LAST page first (portal is oldest-first), so new
+    evals on the final pages are seen before early-stop can fire."""
+    monkeypatch.setattr(R.time, "sleep", lambda s: None)
+    monkeypatch.setattr(R.hp, "parse_total_count", lambda html, tipo: 50)
+    monkeypatch.setattr(R.hp, "total_pages", lambda n: 5)
+    monkeypatch.setattr(R.hp, "parse_rows", lambda html, r, c, t: [{"eval_id": "x"}])
+    monkeypatch.setattr(R, "_save_progress", lambda *a, **k: None)
+    monkeypatch.setattr(R, "_upsert_rows", lambda rows: 1)  # always new → no early-stop
+
+    visited = []
+
+    class Tracking(_StubClient):
+        def goto_page(self, region, comuna, tipo, page):
+            visited.append(page)
+            return self._pages[page]
+
+    R.discover_comuna(Tracking({i: f"p{i}" for i in range(1, 6)}), 10, 100, 1,
+                      incremental=True)
+    # search() serves page 1; goto_page is hit for the rest, last→first.
+    # First fetched page is 5 (the newest). Page 1 comes from search(), not goto_page.
+    assert visited == [5, 4, 3, 2]
+
+
+def test_discover_comuna_reverse_early_stop_reaches_new_on_last_page(monkeypatch):
+    """Last page has new rows, earlier pages are all-known. Reverse + early-stop must
+    still capture the new last-page rows (the bug forward pagination caused)."""
+    monkeypatch.setattr(R.time, "sleep", lambda s: None)
+    monkeypatch.setattr(R.hp, "parse_total_count", lambda html, tipo: 50)
+    monkeypatch.setattr(R.hp, "total_pages", lambda n: 5)
+    monkeypatch.setattr(R.hp, "parse_rows",
+                        lambda html, r, c, t: [{"eval_id": f"{html}-{i}"} for i in range(10)])
+    monkeypatch.setattr(R, "_save_progress", lambda *a, **k: None)
+
+    # Reverse visit order is p5,p4,p3,...; p5 has 5 new, then all-known.
+    new_by_visit = iter([5, 0, 0])  # grace=2 stops after 2 consecutive zeros (p4,p3)
+    monkeypatch.setattr(R, "_upsert_rows", lambda rows: next(new_by_visit))
+
+    res = R.discover_comuna(_StubClient({i: f"p{i}" for i in range(1, 6)}),
+                            10, 100, 1, incremental=True, early_stop_grace=2)
+    assert res["early_stopped"] is True
+    assert res["rows_new"] == 5  # the new last-page rows were captured
+
+
+# ── Persist: critical-field NULL warning (Layer-1: warn, don't block) ────────
+
+def test_warn_missing_logs_null_critical_fields(caplog):
+    import logging
+    from informes_cev_minvu_db.pipeline import persist as P
+    with caplog.at_level(logging.WARNING):
+        P._warn_missing("eval-1", "pagina1",
+                        {"codigo_evaluacion_energetica": "X", "emitida_el": None,
+                         "superficie_interior_util_m2": 50.0,
+                         "demanda_calefaccion_kwh_m2_ano": 1.0,
+                         "demanda_enfriamiento_kwh_m2_ano": 2.0})
+    assert "emitida_el" in caplog.text
+    assert "superficie_interior_util_m2" not in caplog.text  # present → not flagged
+
+
+def test_warn_missing_silent_when_all_present(caplog):
+    import logging
+    from informes_cev_minvu_db.pipeline import persist as P
+    with caplog.at_level(logging.WARNING):
+        P._warn_missing("eval-2", "pagina2",
+                        {"demanda_calefaccion_kwh_m2_ano": 1.0,
+                         "demanda_enfriamiento_kwh_m2_ano": 2.0})
+    assert caplog.text == ""
+
+
 # ── Admin token gate ────────────────────────────────────────────────────────
 
 def test_require_admin_passes_when_no_token_configured(monkeypatch):

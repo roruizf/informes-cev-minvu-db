@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Query the CEV production DB diagnostic from outside the container, over HTTPS.
+#
+# Unlike sgip-remote (SQLite-in-container → needs SSH + crictl exec), CEV's
+# Postgres is an external Zeabur service and the app already exposes an
+# authenticated read-only endpoint. So this is just a thin curl wrapper — no SSH,
+# no crictl, no sudo, no k3s coupling.
+#
+# Usage:
+#   bin/cev-remote                 # GET /admin/db-diagnostic (default)
+#   bin/cev-remote diagnostic      # same (explicit)
+#   bin/cev-remote health          # GET /health
+#   bin/cev-remote last-scrape     # GET /health/last-scrape
+#   bin/cev-remote backfill-status # GET /admin/backfill-status
+#
+# Env:
+#   CEV_BASE_URL      base URL (default: https://informes-cev-minvu-db.zeabur.app)
+#   CEV_ADMIN_TOKEN   X-Admin-Token for /admin/* (preferred). Falls back to
+#                     ADMIN_TOKEN, which is the var pydantic-settings actually reads
+#                     server-side (config.py has no env_prefix). Required if the
+#                     server has a token configured; omit for open /health/*.
+#
+# Output is the server's JSON, untouched. Pipe to jq for pretty-printing:
+#   bin/cev-remote | jq .
+set -euo pipefail
+
+BASE="${CEV_BASE_URL:-https://informes-cev-minvu-db.zeabur.app}"
+TOKEN="${CEV_ADMIN_TOKEN:-${ADMIN_TOKEN:-}}"
+
+cmd="${1:-diagnostic}"
+case "$cmd" in
+  diagnostic|"")    path="/admin/db-diagnostic" ;;
+  health)           path="/health" ;;
+  last-scrape)      path="/health/last-scrape" ;;
+  backfill-status)  path="/admin/backfill-status" ;;
+  *)
+    echo "{\"ok\": false, \"error\": \"unknown command: $cmd (try: diagnostic|health|last-scrape|backfill-status)\"}" >&2
+    exit 2
+    ;;
+esac
+
+# -s silent, -S show errors, -f fail (non-2xx → exit non-zero), --max-time guard.
+exec curl -sSf --max-time 60 \
+  ${TOKEN:+-H "X-Admin-Token: $TOKEN"} \
+  "${BASE}${path}"
