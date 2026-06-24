@@ -70,6 +70,9 @@ class _StubClient:
     def __init__(self, pages):
         self._pages = pages  # dict page_no -> "html"
 
+    def select_region(self, region_id):
+        return ""  # discover_comuna selects the region before searching
+
     def search(self, *a):
         return self._pages[1]
 
@@ -120,6 +123,32 @@ def test_discover_comuna_grace_tolerates_isolated_zero_page(monkeypatch):
     # so all 4 pages get scraped; no premature stop.
     assert res["rows_seen"] == 40
     assert res["rows_new"] == 8
+
+
+def test_discover_comuna_selects_region_before_search(monkeypatch):
+    """Regression: the portal needs the region postback BEFORE the search, else the
+    result grids come back empty. select_region must be called, and before search."""
+    monkeypatch.setattr(R.time, "sleep", lambda s: None)
+    monkeypatch.setattr(R.hp, "parse_total_count", lambda html, tipo: 0)
+    monkeypatch.setattr(R.hp, "total_pages", lambda n: 0)
+    monkeypatch.setattr(R.hp, "parse_rows", lambda html, r, c, t: [])
+    monkeypatch.setattr(R, "_save_progress", lambda *a, **k: None)
+    monkeypatch.setattr(R, "_upsert_rows", lambda rows: 0)
+
+    calls = []
+
+    class Ordered(_StubClient):
+        def select_region(self, region_id):
+            calls.append(("select_region", region_id))
+            return ""
+
+        def search(self, region, comuna, tipo):
+            calls.append(("search", region, comuna, tipo))
+            return self._pages[1]
+
+    R.discover_comuna(Ordered({1: "p1"}), region_id=8, comuna_id=62, tipo=2)
+    assert calls[0] == ("select_region", 8)
+    assert calls[1] == ("search", 8, 62, 2)
 
 
 def test_discover_comuna_no_early_stop_when_not_incremental(monkeypatch):

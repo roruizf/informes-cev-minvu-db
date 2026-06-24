@@ -109,7 +109,14 @@ def discover_comuna(client: PortalClient, region_id: int, comuna_id: int, tipo: 
         is ignored — a reverse run always restarts from the last page (cheap, early-stop
         kicks in fast) and a crashed incremental run simply re-runs.
     Updates DiscoveryProgress as it goes so a crash mid-unit can resume.
+
+    The portal (ASP.NET WebForms) requires the region dropdown postback BEFORE the
+    search: searching against a fresh-GET VIEWSTATE returns empty grids ("No existen
+    viviendas …"). The reference scraper sidesteps this by reusing a per-region
+    VIEWSTATE captured after region selection; we replicate it explicitly with
+    select_region() so each unit's client searches against a post-region VIEWSTATE.
     """
+    client.select_region(region_id)  # MUST precede search() or grids come back empty
     page = client.search(region_id, comuna_id, tipo)
     total = hp.parse_total_count(page, tipo)
     pages = hp.total_pages(total)
